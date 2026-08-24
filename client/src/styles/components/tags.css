@@ -1,0 +1,197 @@
+/* ============================================
+   标签 & 徽章
+   ============================================ */
+
+.player-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 8px;
+    margin-bottom: 4px;
+}
+
+.tag-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px 12px;
+    border-radius: 20px;
+    font-size: 12px;
+    font-weight: 500;
+    background: var(--bg-input);
+    color: var(--text-secondary);
+    border: 1px solid var(--border);
+    cursor: default;
+    transition: var(--transition);
+}
+
+.tag-badge.tag-clickable {
+    cursor: pointer;
+}
+
+.tag-badge.tag-clickable:hover {
+    border-color: var(--primary);
+    color: var(--primary-light);
+    background: rgba(108, 92, 231, 0.1);
+}
+
+/* ========== 标签选择器 ========== */
+.tag-selector-wrapper {
+    position: relative;
+}
+
+/* 在筛选行中自动撑满 */
+.tag-expr-row .tag-selector-wrapper {
+    flex: 1;
+    min-width: 150px;
+}
+
+.tag-expr-row .tag-selector-wrapper .form-input {
+    width: 100%;
+}
+
+.tag-selector-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-bottom: 8px;
+}
+
+.tag-selector-input {
+    min-width: 140px;
+}
+
+.tag-selector-dropdown {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    max-height: 200px;
+    overflow-y: auto;
+    z-index: var(--z-dropdown);
+    box-shadow: var(--shadow);
+}
+
+.tag-dropdown-item {
+    padding: 8px 14px;
+    font-size: 14px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    transition: var(--transition);
+}
+
+.tag-dropdown-item:hover {
+    background: var(--bg-input);
+    color: var(--primary-light);
+}
+
+.tag-dropdown-active {
+    background: var(--primary);
+    color: #fff !important;
+}
+
+.tag-dropdown-alt {
+    font-size: 11px;
+    color: var(--text-muted);
+    margin-left: 6px;
+}
+
+.tag-dropdown-count {
+    font-size: 11px;
+    color: var(--text-muted);
+    background: var(--bg-input);
+    padding: 1px 8px;
+    border-radius: 10px;
+}
+
+.tag-dropdown-empty {
+    padding: 10px 14px;
+    font-size: 13px;
+    color: var(--text-muted);
+    text-align: center;
+}
+
+.tag-remove {
+    background: none;
+    border: none;
+    color: var(--text-muted);
+    cursor: pointer;
+    font-size: 16px;
+    line-height: 1;
+    padding: 0 2px;
+    transition: var(--transition);
+    display: inline-flex;
+    align-items: center;
+}
+
+.tag-remove:hover {
+    color: var(--danger);
+}
+
+/* ========== 标签分组高亮颜色（无限色相，用 CSS 变量 --tag-hue 控制） ========== */
+.tag-group-highlight {
+    background: hsl(var(--tag-hue, 260), 60%, 40%, 0.45) !important;
+    border-color: hsl(var(--tag-hue, 260), 60%, 40%, 0.7) !important;
+    color: hsl(var(--tag-hue, 260), 50%, 85%) !important;
+}
+
+/* 浅色主题：浅底 + 深字，保证对比度 */
+@media (prefers-color-scheme: light) {
+    .tag-group-highlight {
+        background: hsl(var(--tag-hue, 260), 60%, 92%, 0.65) !important;
+        border-color: hsl(var(--tag-hue, 260), 55%, 45%, 0.55) !important;
+        color: hsl(var(--tag-hue, 260), 70%, 22%) !important;
+    }
+}
+
+/* 手动浅色（data-theme）同样生效 */
+html[data-theme='light'] .tag-group-highlight {
+    background: hsl(var(--tag-hue, 260), 60%, 92%, 0.65) !important;
+    border-color: hsl(var(--tag-hue, 260), 55%, 45%, 0.55) !important;
+    color: hsl(var(--tag-hue, 260), 70%, 22%) !important;
+}
+
+/* ========== 徽章 ========== */
+.badge {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+}
+
+.badge-admin {
+    background: color-mix(in srgb, var(--primary) 20%, transparent);
+    color: var(--primary-light);
+}
+
+.badge-user {
+    background: color-mix(in srgb, var(--secondary) 20%, transparent);
+    color: var(--secondary);
+}
+
+.badge-guest {
+    background: color-mix(in srgb, var(--text-muted) 20%, transparent);
+    color: var(--text-muted);
+}
+
+.badge-video {
+    background: color-mix(in srgb, var(--danger) 20%, transparent);
+    color: var(--danger);
+}
+
+.badge-audio {
+    background: color-mix(in srgb, var(--success) 20%, transparent);
+    color: var(--success);
+}
+
+.badge-image {
+    background: color-mix(in srgb, var(--warning) 20%, transparent);
+    color: var(--warning);
+}

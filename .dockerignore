@@ -1,0 +1,17 @@
+node_modules/
+dist/
+.git/
+.gitignore
+.env
+.env.*
+*.md
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+uploads/
+logs/
+coverage/
+Dockerfile*
+docker-compose*
+*.tsbuildinfo

@@ -1,0 +1,44 @@
+services:
+  app:
+    build: .
+    image: mediacenter:latest
+    restart: unless-stopped
+    init: true
+    ports:
+      - "${PORT:-3000}:3000"
+    env_file: .env
+    environment:
+      DATABASE_URL: postgres://mediacenter:${POSTGRES_PASSWORD:-change-me}@db:5432/mediacenter
+      NODE_ENV: production
+    volumes:
+      - ${MEDIA_DIR:-./uploads}:/app/uploads
+    depends_on:
+      db:
+        condition: service_healthy
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: mediacenter
+      POSTGRES_USER: mediacenter
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change-me}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U mediacenter -d mediacenter"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    security_opt:
+      - no-new-privileges:true
+
+volumes:
+  pgdata:

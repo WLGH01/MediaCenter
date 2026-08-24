@@ -1,0 +1,231 @@
+/* ============================================
+   卡片
+   ============================================ */
+
+.card {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 24px;
+    transition: var(--transition);
+}
+
+.card:hover {
+    border-color: rgba(108, 92, 231, 0.3);
+}
+
+.card-danger {
+    border-color: var(--danger) !important;
+}
+
+.card-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 16px;
+}
+
+.card-header h2 {
+    font-size: 18px;
+    font-weight: 600;
+}
+
+.card-header h3 {
+    font-size: 16px;
+    font-weight: 600;
+}
+
+/* ========== 网格 ========== */
+.grid {
+    display: grid;
+    gap: 20px;
+}
+
+/* 刷新中保留旧列表：淡显并禁点，避免高度塌缩导致滚动位置丢失 */
+.grid-loading {
+    opacity: 0.55;
+    pointer-events: none;
+    transition: opacity 0.15s ease;
+}
+
+.grid-2 {
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+}
+
+.grid-3 {
+    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+}
+
+.grid-4 {
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+}
+
+/* ========== 媒体卡片 ========== */
+.media-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    overflow: hidden;
+    cursor: pointer;
+    transition: var(--transition);
+    /* 防止 <a class="media-card"> 场景下标题继承浏览器默认链接色 */
+    color: var(--text-primary);
+}
+
+.media-card:hover {
+    transform: translateY(-4px);
+    border-color: rgba(108, 92, 231, 0.4);
+    box-shadow: var(--shadow);
+}
+
+.media-card-thumb {
+    width: 100%;
+    aspect-ratio: 16/9;
+    background: var(--bg-input);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 48px;
+    color: var(--text-muted);
+    position: relative;
+    overflow: hidden;
+}
+
+.media-card-thumb img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.media-card-deleted-badge {
+    position: absolute;
+    top: 8px;
+    left: 8px;
+    background: var(--danger);
+    color: #fff;
+    font-size: 11px;
+    font-weight: 700;
+    padding: 2px 8px;
+    border-radius: 4px;
+    line-height: 1.6;
+    z-index: var(--z-content);
+    pointer-events: none;
+    user-select: none;
+}
+
+.media-card-thumb .media-type-badge {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    padding: 4px 8px;
+    border-radius: 4px;
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    background: rgba(0, 0, 0, 0.7);
+    color: #fff;
+}
+
+.media-card-body {
+    padding: 16px;
+}
+
+.media-card-body h3 {
+    font-size: 15px;
+    font-weight: 600;
+    margin-bottom: 6px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.media-card-body .media-meta {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    font-size: 12px;
+    color: var(--text-muted);
+}
+
+.media-card-body .media-meta span {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+/* 媒体卡片上的标签 */
+.tags-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 4px;
+    margin-top: 8px;
+    min-width: 0;
+}
+
+.tags-row-inner {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    flex: 1;
+    min-width: 0;
+}
+
+.tags-row-inner.collapsed {
+    max-height: 26px;
+    overflow: hidden;
+}
+
+.media-card-tag {
+    display: inline-block;
+    padding: 2px 10px;
+    background: rgba(108, 92, 231, 0.2);
+    border: 1px solid rgba(108, 92, 231, 0.15);
+    border-radius: 12px;
+    font-size: 11px;
+    color: var(--primary-light);
+    white-space: nowrap;
+}
+
+.media-card-tag.tag-clickable:hover {
+    background: rgba(108, 92, 231, 0.35);
+}
+
+/* 标签展开/收起切换按钮 */
+.media-card-tag.tag-expand-toggle {
+    cursor: pointer;
+    font-size: 11px;
+    background: transparent;
+    border-color: var(--border);
+    border-style: dashed;
+    color: var(--text-secondary);
+    transition: var(--transition);
+}
+
+.media-card-tag.tag-expand-toggle:hover {
+    background: var(--bg-input);
+    color: var(--text-primary);
+}
+
+/* ========== 操作卡片 ========== */
+.actions-card {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 12px 24px;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+}
+
+.actions-card .actions-group {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 10px;
+}
+
+.actions-card .btn {
+    white-space: nowrap;
+}

@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="color-scheme" content="dark light">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <title>MediaCenter - 流媒体中心</title>
+
+    <!-- PWA 元标签 -->
+    <meta name="theme-color" content="#6c5ce7">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="MediaCenter">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="application-name" content="MediaCenter">
+    <!-- iOS 启动图（推荐尺寸） -->
+    <link rel="apple-touch-icon" href="/icons/icon-180x180.png">
+    <link rel="apple-touch-startup-image" href="/icons/icon-512x512.svg"
+        media="(device-width: 320px) and (device-height: 568px) and (-webkit-device-pixel-ratio: 2)">
+    <link rel="apple-touch-startup-image" href="/icons/icon-512x512.svg"
+        media="(device-width: 375px) and (device-height: 812px) and (-webkit-device-pixel-ratio: 3)">
+
+    <!-- 图标 -->
+    <link rel="icon" href="/favicon.ico" sizes="any">
+    <link rel="icon" type="image/png" sizes="16x16" href="/icons/icon-16x16.png">
+    <link rel="icon" type="image/png" sizes="32x32" href="/icons/icon-32x32.png">
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+    <link rel="mask-icon" href="/favicon.svg" color="#6c5ce7">
+
+    <!-- Manifest（由 vite-plugin-pwa 构建时自动注入） -->
+
+    <!-- 预连接 API 服务 -->
+    <link rel="preconnect" href="/api">
+
+    <!-- 关闭自动电话号码检测 -->
+    <meta name="format-detection" content="telephone=no,address=no,email=no">
+</head>
+
+<body>
+    <div id="app"></div>
+
+    <script type="module" src="/src/main.tsx"></script>
+</body>
+
+</html>

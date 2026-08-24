@@ -1,0 +1,50 @@
+{
+  "name": "media-center",
+  "version": "1.0.0",
+  "description": "HTTP流媒体服务器 - TypeScript + Drizzle ORM + PostgreSQL",
+  "type": "module",
+  "scripts": {
+    "start": "npm run build && cd dist && node --env-file=../.env index.js",
+    "build": "npm run server:build && npm run client:build",
+    "dev": "concurrently --raw \"npm run server:dev\" \"npm run client:dev\"",
+    "client:dev": "cd client && npx vite",
+    "server:dev": "tsx watch src/index.ts",
+    "client:build": "cd client && npx vite build",
+    "server:build": "esbuild src/index.ts --bundle --platform=node --format=esm --outfile=dist/index.js --packages=external"
+  },
+  "keywords": [
+    "streaming",
+    "media",
+    "server",
+    "http"
+  ],
+  "license": "SEE LICENSE IN LICENSE",
+  "dependencies": {
+    "cors": "^2.8.6",
+    "dotenv": "^17.4.2",
+    "drizzle-kit": "^1.0.0-rc.4",
+    "drizzle-orm": "^1.0.0-rc.4",
+    "express": "^5.2.1",
+    "express-rate-limit": "^8.5.2",
+    "helmet": "^8.3.0",
+    "jsonwebtoken": "^9.0.3",
+    "mime-types": "^3.0.2",
+    "multer": "^2.1.1",
+    "pg": "^8.21.0",
+    "send": "^1.2.1"
+  },
+  "devDependencies": {
+    "@types/cors": "^2.8.19",
+    "@types/express": "^5.0.6",
+    "@types/jsonwebtoken": "^9.0.10",
+    "@types/mime-types": "^3.0.1",
+    "@types/multer": "^2.1.0",
+    "@types/node": "^26.2.0",
+    "@types/pg": "^8.20.0",
+    "concurrently": "^10.0.3",
+    "esbuild": "^0.28.1",
+    "prettier": "^3.8.4",
+    "tsx": "^4.23.0",
+    "typescript": "^7.0.2"
+  }
+}
