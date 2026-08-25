@@ -49,6 +49,7 @@ export default function CollectionsPage() {
     const [search, setSearch] = useState('');
     const [typeFilter, setTypeFilter] = useState('');
     const [authorFilter, setAuthorFilter] = useState('');
+    const [tagFilter, setTagFilter] = useState('');
     const [loadingMedia, setLoadingMedia] = useState(false);
 
     const loadCollections = async () => {
@@ -78,6 +79,7 @@ export default function CollectionsPage() {
         setSearch('');
         setTypeFilter('');
         setAuthorFilter('');
+        setTagFilter('');
     };
 
     // 加载收藏夹内媒体
@@ -90,7 +92,8 @@ export default function CollectionsPage() {
                 limit: PAGE_SIZE,
                 search: search || undefined,
                 type: typeFilter || undefined,
-                authorId: authorFilter || undefined
+                authorId: authorFilter || undefined,
+                tags: tagFilter || undefined
             })
                 .then((data) => {
                     setItems(data.items || []);
@@ -98,9 +101,9 @@ export default function CollectionsPage() {
                 })
                 .catch((err) => notify.error(err))
                 .finally(() => setLoadingMedia(false));
-        }, search ? 400 : 0); // 搜索防抖
+        }, search || tagFilter ? 400 : 0); // 搜索/标签防抖
         return () => clearTimeout(timer);
-    }, [activeId, page, search, typeFilter, authorFilter]);
+    }, [activeId, page, search, typeFilter, authorFilter, tagFilter]);
 
     const openCreate = () => {
         setEditing(null);
@@ -237,7 +240,7 @@ export default function CollectionsPage() {
                         <h2>{activeCollection.name}（{activeCollection.mediaCount}）</h2>
                     </div>
 
-                    {/* 筛选栏：搜索 / 类型 / 作者 */}
+                    {/* 筛选栏：搜索 / 类型 / 作者 / 标签 */}
                     <div className="search-bar" style={{ marginBottom: '16px' }}>
                         <div className="search-bar-group">
                             <input
@@ -261,6 +264,12 @@ export default function CollectionsPage() {
                                 placeholder="按作者名筛选"
                                 value={authorFilter}
                                 onChange={(e) => { setAuthorFilter(e.target.value); setPage(1); }}
+                            />
+                            <input
+                                className="form-input"
+                                placeholder="标签表达式，如 标签A&(标签B|标签C)，!标签 排除"
+                                value={tagFilter}
+                                onChange={(e) => { setTagFilter(e.target.value); setPage(1); }}
                             />
                         </div>
                     </div>

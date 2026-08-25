@@ -1,9 +1,11 @@
 import type { Request, Response } from 'express';
-import { eq, and, desc, count, ilike, inArray, isNull, type SQL } from 'drizzle-orm';
+import { eq, and, desc, count, ilike, inArray, notInArray, isNull, or, sql, type SQL } from 'drizzle-orm';
 import { isUuid, uuidv4 } from '../utils/uuid';
 import { getDatabase, schema } from '../db/index';
 import { isString, isArray } from '../utils/env';
 import { generateSignedUrl } from '../utils/signUrl';
+import { parseExpr, evaluateExpr } from '../utils/exprParser';
+import type { ExprNode } from '../utils/exprParser';
 
 /**
  * 收藏夹控制器
@@ -164,9 +166,39 @@ export async function deleteCollection(req: Request, res: Response): Promise<voi
     }
 }
 
+/** 获取所有未删除的媒体 ID（NOT 运算全集，供标签表达式求值） */
+async function getAllMediaIds(): Promise<Set<string>> {
+    const db = getDatabase();
+    const rows = await db
+        .select({ id: schema.media.id })
+        .from(schema.media)
+        .where(isNull(schema.media.deletedAt))
+        .execute();
+    return new Set(rows.map((r) => r.id));
+}
+
+/** 标签维度求值：叶子 → 匹配 tags.name / altNames → 返回媒体 ID 集合 */
+async function evaluateTagAst(node: ExprNode): Promise<Set<string>> {
+    return evaluateExpr(node, async (name) => {
+        const db = getDatabase();
+        const rows = await db
+            .select({ mediaId: schema.mediaTags.mediaId })
+            .from(schema.mediaTags)
+            .innerJoin(schema.tags, eq(schema.mediaTags.tagId, schema.tags.id))
+            .where(
+                or(
+                    eq(schema.tags.name, name),
+                    sql`${name} = ANY(${schema.tags.altNames})`
+                )
+            )
+            .execute();
+        return new Set(rows.map((r) => r.mediaId));
+    }, getAllMediaIds);
+}
+
 /**
- * 收藏夹内的媒体列表（支持搜索 / 类型 / 作者筛选，分页）
- * GET /api/collections/:id/media?page=1&limit=20&search=xxx&type=video&authorId=uuid
+ * 收藏夹内的媒体列表（支持搜索 / 类型 / 作者 / 标签筛选，分页）
+ * GET /api/collections/:id/media?page=1&limit=20&search=xxx&type=video&authorId=uuid&tags=A&(B|C)
  */
 export async function listCollectionMedia(req: Request, res: Response): Promise<void> {
     try {
@@ -188,6 +220,7 @@ export async function listCollectionMedia(req: Request, res: Response): Promise<
         const search = isString(req.query.search) ? req.query.search.trim() : undefined;
         const type = isString(req.query.type) ? req.query.type : undefined;
         const authorId = isString(req.query.authorId) ? req.query.authorId : undefined;
+        const tagsExpr = isString(req.query.tags) ? req.query.tags.trim() : undefined;
         const sortBy = isString(req.query.sortBy) ? req.query.sortBy : 'createdAt';
         const sortOrder = isString(req.query.sortOrder) && req.query.sortOrder.toLowerCase() === 'asc' ? 'asc' : 'desc';
 
@@ -202,6 +235,34 @@ export async function listCollectionMedia(req: Request, res: Response): Promise<
         }
         if (authorId) {
             conditions.push(eq(schema.media.authorId, authorId));
+        }
+        // 标签表达式筛选：?tags=A&(B|C)|D  支持 ! 排除
+        if (tagsExpr) {
+            try {
+                const ast = parseExpr(tagsExpr);
+                if (ast) {
+                    if (ast.type === 'not') {
+                        // 顶层 NOT → 只求 child，用 NOT IN 避免全量补集
+                        const idSet = await evaluateTagAst(ast.child);
+                        const ids = [...idSet];
+                        if (ids.length > 0) {
+                            conditions.push(notInArray(schema.collectionMedia.mediaId, ids));
+                        }
+                    } else {
+                        const idSet = await evaluateTagAst(ast);
+                        const ids = [...idSet];
+                        if (ids.length === 0) {
+                            res.json({ items: [], pagination: { page, limit, total: 0, totalPages: 0, sortBy, sortOrder } });
+                            return;
+                        }
+                        // 限定在收藏夹内：先求交集，再查收藏夹
+                        conditions.push(inArray(schema.media.id, ids));
+                    }
+                }
+            } catch {
+                res.status(400).json({ error: 'media.invalidTagExpr' });
+                return;
+            }
         }
 
         const where = and(...conditions);

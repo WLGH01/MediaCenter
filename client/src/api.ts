@@ -436,7 +436,7 @@ export const Api = {
 
     listCollectionMedia(
         id: string,
-        params?: { page?: number; limit?: number; search?: string; type?: string; authorId?: string; sortBy?: string; sortOrder?: string }
+        params?: { page?: number; limit?: number; search?: string; type?: string; authorId?: string; tags?: string; sortBy?: string; sortOrder?: string }
     ) {
         const searchParams = new URLSearchParams();
         if (params?.page && params.page > 1) searchParams.set('page', String(params.page));
@@ -444,6 +444,7 @@ export const Api = {
         if (params?.search) searchParams.set('search', params.search);
         if (params?.type) searchParams.set('type', params.type);
         if (params?.authorId) searchParams.set('authorId', params.authorId);
+        if (params?.tags) searchParams.set('tags', params.tags);
         if (params?.sortBy) searchParams.set('sortBy', params.sortBy);
         if (params?.sortOrder) searchParams.set('sortOrder', params.sortOrder);
         const qs = searchParams.toString();
