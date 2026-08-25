@@ -2,7 +2,7 @@ import { drizzle } from 'drizzle-orm/node-postgres';
 import pg from 'pg';
 import { sql, eq, type SQL } from 'drizzle-orm';
 import { uuidv4 } from '../utils/uuid';
-import { randomBytes } from 'node:crypto';
+import { randomBytes, createHash } from 'node:crypto';
 import * as schema from './schema';
 import config from '../config';
 import { hashPassword } from '../utils/hash';
@@ -298,6 +298,46 @@ export async function ensureApiUser(): Promise<string> {
 /** pg_trgm 相似度函数：similarity(column, 'keyword') */
 export function similarity(column: any, value: string): SQL {
     return sql`similarity(${column}, ${value})`;
+}
+
+/** 计算 API 令牌的 SHA-256 哈希（数据库只存哈希，不存明文） */
+export function hashApiToken(token: string): string {
+    return createHash('sha256').update(token).digest('hex');
+}
+
+/**
+ * 从数据库中查找 API 令牌（管理面板生成），返回对应的服务账户身份。
+ * 找到则更新 lastUsedAt；未找到返回 null。
+ */
+export async function resolveDbApiToken(token: string): Promise<Express.Request['user'] | null> {
+    if (!db) return null;
+    try {
+        const rows = await db
+            .select({ id: schema.apiTokens.id, role: schema.apiTokens.role })
+            .from(schema.apiTokens)
+            .where(eq(schema.apiTokens.token, hashApiToken(token)))
+            .limit(1)
+            .execute();
+        const row = rows[0];
+        if (!row) return null;
+
+        // 异步更新 lastUsedAt（失败不阻塞认证）
+        db.update(schema.apiTokens)
+            .set({ lastUsedAt: new Date().toISOString() })
+            .where(eq(schema.apiTokens.id, row.id))
+            .execute()
+            .catch(() => {});
+
+        // 确保 API 服务账户存在（token 映射到该账户，角色 admin）
+        let apiId = apiUserId;
+        if (!apiId) {
+            apiId = await ensureApiUser();
+        }
+        return { id: apiId, username: API_USERNAME, role: 'admin' };
+    } catch (err) {
+        console.warn('[DB] 查询 API 令牌失败:', err instanceof Error ? err.message : err);
+        return null;
+    }
 }
 
 /** pg_bigm 2-gram 相似度函数(东亚文字友好, 2 字词优于 trgm)：bigm_similarity(column, 'keyword') */

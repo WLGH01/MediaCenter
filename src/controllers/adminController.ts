@@ -1,9 +1,10 @@
 import type { Request, Response } from 'express';
 import { sql, eq, like, count, asc, desc, inArray, type SQL } from 'drizzle-orm';
 import { isUuid, uuidv4 } from '../utils/uuid';
-import { getDatabase, schema, ensureDefaultUsers, syncSchemaInternal, API_USERNAME, apiUserId } from '../db/index';
+import { getDatabase, schema, ensureDefaultUsers, syncSchemaInternal, API_USERNAME, apiUserId, hashApiToken } from '../db/index';
 import { isString } from '../utils/env';
 import { hashPassword } from '../utils/hash';
+import { randomBytes } from 'node:crypto';
 import { serverEvents } from '../utils/serverEvents';
 import { deleteFile } from '../utils/storage';
 import config from '../config';
@@ -468,6 +469,101 @@ export async function batchDeleteMedia(req: Request, res: Response): Promise<voi
         });
     } catch (err) {
         console.error('[Admin] 批量删除失败:', err);
+        res.status(500).json({ error: 'error.internal' });
+    }
+}
+
+/**
+ * 列出所有 API 令牌（不含明文 token，仅元信息）
+ * GET /api/admin/api-tokens
+ */
+export async function listApiTokens(req: Request, res: Response): Promise<void> {
+    try {
+        const db = getDatabase();
+        const rows = await db
+            .select({
+                id: schema.apiTokens.id,
+                name: schema.apiTokens.name,
+                description: schema.apiTokens.description,
+                role: schema.apiTokens.role,
+                createdAt: schema.apiTokens.createdAt,
+                lastUsedAt: schema.apiTokens.lastUsedAt
+            })
+            .from(schema.apiTokens)
+            .orderBy(desc(schema.apiTokens.createdAt))
+            .execute();
+
+        res.json({ tokens: rows });
+    } catch (err) {
+        console.error('[Admin] 获取 API 令牌列表失败:', err);
+        res.status(500).json({ error: 'error.internal' });
+    }
+}
+
+/**
+ * 生成新的 API 令牌（仅返回一次明文）
+ * POST /api/admin/api-tokens
+ * Body: { name: string; description?: string }
+ */
+export async function createApiToken(req: Request, res: Response): Promise<void> {
+    try {
+        const { name, description } = req.body;
+        if (!isString(name) || !name.trim()) {
+            res.status(400).json({ error: 'admin.apiToken.nameRequired' });
+            return;
+        }
+        const trimmedName = name.trim().slice(0, 64);
+        const trimmedDesc = isString(description) ? description.trim().slice(0, 256) : '';
+
+        // 生成随机令牌：mc_ 前缀 + 32 字节随机数（base64url）
+        const rawToken = `mc_${randomBytes(32).toString('base64url')}`;
+
+        const db = getDatabase();
+        await db
+            .insert(schema.apiTokens)
+            .values({
+                name: trimmedName,
+                description: trimmedDesc,
+                token: hashApiToken(rawToken),
+                role: 'admin'
+            })
+            .execute();
+
+        console.log(`[Admin] 已生成 API 令牌: ${trimmedName}`);
+        res.status(201).json({
+            message: 'admin.apiToken.created',
+            token: rawToken, // 仅此一次返回明文
+            hint: 'admin.apiToken.copyNow'
+        });
+    } catch (err) {
+        console.error('[Admin] 生成 API 令牌失败:', err);
+        res.status(500).json({ error: 'error.internal' });
+    }
+}
+
+/**
+ * 删除 API 令牌（立即失效）
+ * DELETE /api/admin/api-tokens/:id
+ */
+export async function deleteApiToken(req: Request, res: Response): Promise<void> {
+    try {
+        const id = req.params.id;
+        if (!isString(id) || !isUuid(id)) {
+            res.status(404).json({ error: 'admin.apiToken.notFound' });
+            return;
+        }
+
+        const db = getDatabase();
+        const existing = await db.select({ id: schema.apiTokens.id }).from(schema.apiTokens).where(eq(schema.apiTokens.id, id)).limit(1).execute();
+        if (!existing[0]) {
+            res.status(404).json({ error: 'admin.apiToken.notFound' });
+            return;
+        }
+
+        await db.delete(schema.apiTokens).where(eq(schema.apiTokens.id, id)).execute();
+        res.json({ message: 'admin.apiToken.deleted' });
+    } catch (err) {
+        console.error('[Admin] 删除 API 令牌失败:', err);
         res.status(500).json({ error: 'error.internal' });
     }
 }

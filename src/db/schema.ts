@@ -115,6 +115,21 @@ export const authors = pgTable(
     ]
 );
 
+// ===== api_tokens 表（管理面板生成的静态 API 令牌） =====
+export const apiTokens = pgTable(
+    'api_tokens',
+    {
+        id: uuid('id').primaryKey().defaultRandom(),
+        name: text('name').notNull(),
+        token: text('token').notNull().unique(),
+        description: text('description').notNull().default(''),
+        role: text('role').notNull().default('admin'),
+        createdAt: timestamp('created_at', { mode: 'string', withTimezone: true }).notNull().defaultNow(),
+        lastUsedAt: timestamp('last_used_at', { mode: 'string', withTimezone: true })
+    },
+    (table) => [uniqueIndex('api_tokens_token_idx').on(table.token)]
+);
+
 // ===== 类型导出 =====
 export type User = typeof users.$inferSelect;
 export type NewUser = typeof users.$inferInsert;
@@ -128,3 +143,5 @@ export type MediaTag = typeof mediaTags.$inferSelect;
 export type NewMediaTag = typeof mediaTags.$inferInsert;
 export type Author = typeof authors.$inferSelect;
 export type NewAuthor = typeof authors.$inferInsert;
+export type ApiToken = typeof apiTokens.$inferSelect;
+export type NewApiToken = typeof apiTokens.$inferInsert;

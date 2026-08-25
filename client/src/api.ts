@@ -349,6 +349,28 @@ export const Api = {
         );
     },
 
+    // API 令牌管理（管理面板生成静态 API 令牌）
+    listApiTokens() {
+        return request<{
+            tokens: {
+                id: string;
+                name: string;
+                description: string;
+                role: string;
+                createdAt: string;
+                lastUsedAt: string | null;
+            }[];
+        }>('GET', '/admin/api-tokens');
+    },
+
+    createApiToken(data: { name: string; description?: string }) {
+        return request<{ message: string; token: string; hint: string }>('POST', '/admin/api-tokens', data);
+    },
+
+    deleteApiToken(id: string) {
+        return request<{ message: string }>('DELETE', `/admin/api-tokens/${id}`);
+    },
+
     // 作者
     listAuthors(params?: { page?: number; limit?: number; search?: string; sortBy?: string; sortOrder?: string }) {
         const searchParams = new URLSearchParams();

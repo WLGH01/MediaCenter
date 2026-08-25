@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { Api } from '../../api';
@@ -23,6 +23,25 @@ export default function AdminPage() {
     const [batchMediaList, setBatchMediaList] = useState<{ id: string; title: string; filePath: string }[]>([]);
     const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
     const [searchingBatch, setSearchingBatch] = useState(false);
+
+    // 实验性功能开关：默认关闭（隐藏），打开后显示批量删除等实验功能
+    const [experimentalEnabled, setExperimentalEnabled] = useState<boolean>(() => {
+        try {
+            return localStorage.getItem('mc-experimental') === '1';
+        } catch {
+            return false;
+        }
+    });
+
+    const toggleExperimental = () => {
+        setExperimentalEnabled(prev => {
+            const next = !prev;
+            try {
+                localStorage.setItem('mc-experimental', next ? '1' : '0');
+            } catch { /* ignore */ }
+            return next;
+        });
+    };
 
     // 根据目录前缀搜索匹配的媒体
     const searchMediaByPath = async () => {
@@ -150,6 +169,78 @@ export default function AdminPage() {
         }
     };
 
+    // ===== API 令牌管理 =====
+    const [apiTokens, setApiTokens] = useState<{ id: string; name: string; description: string; role: string; createdAt: string; lastUsedAt: string | null }[]>([]);
+    const [apiTokenLoading, setApiTokenLoading] = useState(false);
+    const [newTokenName, setNewTokenName] = useState('');
+    const [newTokenDesc, setNewTokenDesc] = useState('');
+    const [generatingToken, setGeneratingToken] = useState(false);
+    const [freshToken, setFreshToken] = useState<string | null>(null);
+
+    const loadApiTokens = async () => {
+        setApiTokenLoading(true);
+        try {
+            const data = await Api.listApiTokens();
+            setApiTokens(data.tokens || []);
+        } catch (err) {
+            notify.error(err);
+        } finally {
+            setApiTokenLoading(false);
+        }
+    };
+
+    // 进入页面时加载一次
+    useEffect(() => { loadApiTokens(); }, []);
+
+    const handleGenerateToken = async () => {
+        const name = newTokenName.trim();
+        if (!name) {
+            notify.error('请输入令牌名称');
+            return;
+        }
+        setGeneratingToken(true);
+        try {
+            const data = await Api.createApiToken({ name, description: newTokenDesc.trim() });
+            setFreshToken(data.token);
+            setNewTokenName('');
+            setNewTokenDesc('');
+            await loadApiTokens();
+        } catch (err) {
+            notify.error(err);
+        } finally {
+            setGeneratingToken(false);
+        }
+    };
+
+    const handleDeleteToken = (id: string, name: string) => {
+        showConfirm({
+            message: `确定删除 API 令牌 "${name}" 吗？删除后立即失效，使用该令牌的调用将返回 401。`,
+            danger: true,
+            confirmText: t('common.confirm'),
+            cancelText: t('common.cancel'),
+            onConfirm: async () => {
+                try {
+                    await notify.promise(Api.deleteApiToken(id), {
+                        loading: '删除中...',
+                        success: 'API 令牌已删除'
+                    });
+                    await loadApiTokens();
+                } catch (err) {
+                    notify.error(err);
+                }
+            }
+        });
+    };
+
+    const copyToken = (token: string) => {
+        try {
+            navigator.clipboard.writeText(token);
+            notify.success('已复制到剪贴板');
+        } catch {
+            notify.error('复制失败，请手动复制');
+        }
+    };
+
     return (
         <AdminGuard>
             <div>
@@ -241,6 +332,89 @@ export default function AdminPage() {
                                 t('admin.fileHash.notFound')
                             )}
                         </p>
+                    )}
+                </div>
+
+                {/* API 令牌管理 */}
+                <div className="card section-card">
+                    <div className="card-header">
+                        <h2>API 令牌管理</h2>
+                    </div>
+                    <p className="text-secondary mb-16">
+                        生成静态 API 令牌，用于外部脚本/工具调用接口（<code>Authorization: Bearer &lt;token&gt;</code>），无需登录、永不过期（除非手动删除）。
+                    </p>
+
+                    {/* 生成新令牌 */}
+                    <div className="admin-inline-form mb-16">
+                        <input
+                            className="form-input flex-1"
+                            value={newTokenName}
+                            onChange={(e) => setNewTokenName(e.target.value)}
+                            placeholder="令牌名称（必填），如：n8n 推送"
+                        />
+                        <button className="btn btn-primary" onClick={handleGenerateToken} disabled={generatingToken}>
+                            {generatingToken ? '生成中...' : '生成令牌'}
+                        </button>
+                    </div>
+                    <input
+                        className="form-input mb-16"
+                        style={{ width: '100%' }}
+                        value={newTokenDesc}
+                        onChange={(e) => setNewTokenDesc(e.target.value)}
+                        placeholder="备注说明（可选）"
+                    />
+
+                    {/* 新生成的令牌（仅显示一次） */}
+                    {freshToken && (
+                        <div style={{
+                            marginBottom: '16px',
+                            padding: '12px',
+                            border: '1px solid var(--success)',
+                            borderRadius: '4px',
+                            background: 'var(--bg-secondary)'
+                        }}>
+                            <div style={{ fontWeight: '600', marginBottom: '6px', color: 'var(--success)' }}>
+                                ⚠️ 令牌已生成，请立即复制保存（关闭后不再显示）：
+                            </div>
+                            <code style={{ wordBreak: 'break-all', userSelect: 'all' }}>{freshToken}</code>
+                            <div style={{ marginTop: '8px' }}>
+                                <button className="btn btn-primary" onClick={() => copyToken(freshToken)}>复制令牌</button>
+                                <button className="btn" style={{ marginLeft: '8px' }} onClick={() => setFreshToken(null)}>关闭</button>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* 令牌列表 */}
+                    {apiTokenLoading ? (
+                        <p className="muted">加载中...</p>
+                    ) : apiTokens.length === 0 ? (
+                        <p className="muted">暂无 API 令牌，在上方输入名称生成一个。</p>
+                    ) : (
+                        <div style={{
+                            border: '1px solid var(--border)',
+                            borderRadius: '4px',
+                            overflow: 'hidden'
+                        }}>
+                            {apiTokens.map((tk) => (
+                                <div key={tk.id} style={{
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'space-between',
+                                    padding: '10px 12px',
+                                    borderBottom: '1px solid var(--border-light)',
+                                    background: 'var(--bg-secondary)'
+                                }}>
+                                    <div style={{ flex: 1, minWidth: 0 }}>
+                                        <div style={{ fontWeight: '500' }}>{tk.name}</div>
+                                        <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
+                                            {tk.description || '无备注'}
+                                            {tk.lastUsedAt ? ` · 最近使用: ${new Date(tk.lastUsedAt).toLocaleString()}` : ' · 未使用'}
+                                        </div>
+                                    </div>
+                                    <button className="btn btn-danger" onClick={() => handleDeleteToken(tk.id, tk.name)}>删除</button>
+                                </div>
+                            ))}
+                        </div>
                     )}
                 </div>
 

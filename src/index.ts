@@ -6,7 +6,7 @@ import { readFileSync, watchFile } from 'fs';
 import cors from 'cors';
 import { join, resolve } from 'path';
 import config from './config';
-import { initDatabase, ensureDefaultUsers, ensureApiUser, closeDatabase } from './db/index';
+import { initDatabase, ensureDefaultUsers, ensureApiUser, closeDatabase, resolveDbApiToken } from './db/index';
 import { ensureUploadDir } from './utils/storage';
 import { authenticate, resolveStreamUser, resolveUserFromToken } from './middleware/auth';
 import { apiLimiter, strictLimiter, streamLimiter, authLimiter } from './middleware/rateLimit';
@@ -214,7 +214,7 @@ interface SseConnection {
 
 const sseConnections = new Set<SseConnection>();
 const SSE_MAX_CONNECTIONS = 200;
-app.get('/api/events', (req: Request, res: Response) => {
+app.get('/api/events', async (req: Request, res: Response) => {
     if (sseConnections.size >= SSE_MAX_CONNECTIONS) {
         res.status(429).json({ error: 'error.tooManyConnections' });
         return;
@@ -222,8 +222,13 @@ app.get('/api/events', (req: Request, res: Response) => {
     // 解析连接用户：优先 query token（EventSource 无法携带 Authorization header，
     // authenticate 会把无 header 的连接标记为 guest），其次回退 req.user
     const queryToken = isString(req.query.token) ? req.query.token : null;
-    const user = resolveUserFromToken(queryToken) ?? req.user ?? { id: null, username: 'guest', role: 'guest' };
-    const conn: SseConnection = { res, user };
+    let user = queryToken ? resolveUserFromToken(queryToken) : null;
+    if (!user && queryToken) {
+        // 数据库 API 令牌（管理面板生成）
+        user = await resolveDbApiToken(queryToken);
+    }
+    const connUser = user ?? req.user ?? { id: null, username: 'guest', role: 'guest' };
+    const conn: SseConnection = { res, user: connUser };
     sseConnections.add(conn);
     res.setHeader('Content-Type', 'text/event-stream');
     res.setHeader('Cache-Control', 'no-cache');
@@ -240,7 +245,7 @@ app.get('/api/events', (req: Request, res: Response) => {
     // 订阅推送事件（按连接用户过滤：仅推送可见且非自身触发的变更）
     const fns = PUSH_EVENTS.map((event) => {
         const fn = (payload: unknown) => {
-            if (!shouldPushToUser(conn.user, event, payload)) return;
+            if (!shouldPushToUser(connUser, event, payload)) return;
             try {
                 res.write(`event: ${event}\ndata: ${JSON.stringify(payload ?? null)}\n\n`);
             } catch { /* ignore */ }

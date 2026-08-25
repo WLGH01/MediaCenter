@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { scanMediaFiles } from '../controllers/scanController';
-import { resetDatabase, deleteUser, toggleBan, listUsers, updateUserRole, createUser, batchDeleteMedia, listMediaByPath } from '../controllers/adminController';
+import { resetDatabase, deleteUser, toggleBan, listUsers, updateUserRole, createUser, batchDeleteMedia, listMediaByPath, listApiTokens, createApiToken, deleteApiToken } from '../controllers/adminController';
 import { authenticate, requireAuth, requireAdmin } from '../middleware/auth';
 
 const router = Router();
@@ -31,6 +31,11 @@ router.get('/media-by-path', listMediaByPath);
 
 // 批量删除媒体文件接口
 router.post('/batch-delete-media', batchDeleteMedia);
+
+// API 令牌管理（管理面板生成静态 API 令牌）
+router.get('/api-tokens', listApiTokens);
+router.post('/api-tokens', createApiToken);
+router.delete('/api-tokens/:id', deleteApiToken);
 
 // 重置数据库（清空 + 重建 + 初始化）
 router.post('/reset-db', resetDatabase);

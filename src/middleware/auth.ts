@@ -6,7 +6,7 @@ import { hasPermission } from '../utils/roles';
 import { isUuid } from '../utils/uuid';
 import { verifySignedUrl } from '../utils/signUrl';
 import { isString } from '../utils/env';
-import { apiUserId } from '../db';
+import { apiUserId, resolveDbApiToken } from '../db';
 
 // 扩展 Express Request 类型
 declare global {
@@ -51,8 +51,9 @@ export function resolveUserFromToken(token: string | null | undefined): Express.
 /**
  * 验证 JWT 令牌或静态 API 令牌的中间件
  * 将用户信息附加到 req.user，无令牌时视为访客
+ * 认证来源优先级：JWT / 环境变量 API_TOKEN / 数据库 API_TOKEN（管理面板生成）
  */
-export function authenticate(req: Request, res: Response, next: NextFunction): void {
+export async function authenticate(req: Request, res: Response, next: NextFunction): Promise<void> {
     let token: string | null = null;
     const authHeader = req.headers.authorization;
     if (authHeader && authHeader.startsWith('Bearer ')) {
@@ -65,13 +66,27 @@ export function authenticate(req: Request, res: Response, next: NextFunction): v
         return;
     }
 
+    // 1. 同步解析：JWT 或环境变量 API_TOKEN
     const user = resolveUserFromToken(token);
-    if (!user) {
-        res.status(401).json({ error: 'auth.tokenInvalid' });
+    if (user) {
+        req.user = user;
+        next();
         return;
     }
-    req.user = user;
-    next();
+
+    // 2. 异步解析：数据库中的 API 令牌（管理面板生成）
+    try {
+        const dbUser = await resolveDbApiToken(token);
+        if (dbUser) {
+            req.user = dbUser;
+            next();
+            return;
+        }
+    } catch (err) {
+        console.warn('[Auth] 数据库令牌校验失败:', err instanceof Error ? err.message : err);
+    }
+
+    res.status(401).json({ error: 'auth.tokenInvalid' });
 }
 
 /**
