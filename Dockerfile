@@ -47,7 +47,7 @@ RUN apk add --no-cache ffmpeg postgresql postgresql-contrib postgresql-pgvector 
 # 安装生产依赖
 COPY package.json package-lock.json ./
 RUN --mount=type=cache,target=/root/.npm \
-    npm ci --omit=dev && npm cache clean --force
+    npm ci --omit=dev
 
 # 复制编译产物
 COPY --from=server-builder /app/dist/index.js ./index.js
