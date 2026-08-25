@@ -4,6 +4,7 @@ import type { Media } from '../../types';
 import { useAuthStore } from '../../stores/auth';
 import { Api, resolveApiUrl } from '../../api';
 import { notify } from '../../utils/notify';
+import FavoriteButton from '../FavoriteButton';
 
 interface Props {
     media: Media;
@@ -27,6 +28,7 @@ export default function MediaActions({ media }: Props) {
 
     return (
         <>
+            <FavoriteButton mediaId={media.id} />
             <a className="btn btn-secondary btn-sm" href={resolveApiUrl(media.downloadUrl ?? '#')}>
                 {t('view.download')}
             </a>

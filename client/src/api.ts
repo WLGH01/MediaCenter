@@ -397,5 +397,69 @@ export const Api = {
 
     deleteAuthor(id: string) {
         return request<{ message: string }>('DELETE', `/authors/${id}`);
+    },
+
+    // ===== 收藏夹 =====
+    listCollections() {
+        return request<{
+            collections: {
+                id: string;
+                name: string;
+                description: string;
+                createdAt: string;
+                updatedAt: string;
+                mediaCount: number;
+            }[];
+        }>('GET', '/collections');
+    },
+
+    createCollection(data: { name: string; description?: string }) {
+        return request<{
+            collection: {
+                id: string;
+                name: string;
+                description: string;
+                createdAt: string;
+                updatedAt: string;
+                mediaCount: number;
+            };
+        }>('POST', '/collections', data);
+    },
+
+    updateCollection(id: string, data: { name?: string; description?: string }) {
+        return request<{ collection: { id: string; name: string; description: string } }>('PUT', `/collections/${id}`, data);
+    },
+
+    deleteCollection(id: string) {
+        return request<{ message: string }>('DELETE', `/collections/${id}`);
+    },
+
+    listCollectionMedia(
+        id: string,
+        params?: { page?: number; limit?: number; search?: string; type?: string; authorId?: string; sortBy?: string; sortOrder?: string }
+    ) {
+        const searchParams = new URLSearchParams();
+        if (params?.page && params.page > 1) searchParams.set('page', String(params.page));
+        if (params?.limit && params.limit !== 20) searchParams.set('limit', String(params.limit));
+        if (params?.search) searchParams.set('search', params.search);
+        if (params?.type) searchParams.set('type', params.type);
+        if (params?.authorId) searchParams.set('authorId', params.authorId);
+        if (params?.sortBy) searchParams.set('sortBy', params.sortBy);
+        if (params?.sortOrder) searchParams.set('sortOrder', params.sortOrder);
+        const qs = searchParams.toString();
+        return request<MediaListResponse>('GET', `/collections/${id}/media${qs ? '?' + qs : ''}`);
+    },
+
+    addMediaToCollection(id: string, mediaIds: string[]) {
+        return request<{ message: string; added: number; skipped: number }>('POST', `/collections/${id}/media`, { mediaIds });
+    },
+
+    removeMediaFromCollection(id: string, mediaId: string) {
+        return request<{ message: string }>('DELETE', `/collections/${id}/media/${mediaId}`);
+    },
+
+    /** 查询某媒体被当前用户收藏在哪些收藏夹 */
+    getMediaCollections(mediaId: string) {
+        return request<{ collectionIds: string[] }>('GET', `/media/${mediaId}/collections`);
     }
 };

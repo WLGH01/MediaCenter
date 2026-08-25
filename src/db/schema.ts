@@ -130,6 +130,40 @@ export const apiTokens = pgTable(
     (table) => [uniqueIndex('api_tokens_token_idx').on(table.token)]
 );
 
+// ===== collections 表（收藏夹） =====
+export const collections = pgTable(
+    'collections',
+    {
+        id: uuid('id').primaryKey().defaultRandom(),
+        name: text('name').notNull(),
+        description: text('description').notNull().default(''),
+        userId: uuid('user_id')
+            .notNull()
+            .references(() => users.id, { onDelete: 'cascade' }),
+        createdAt: timestamp('created_at', { mode: 'string', withTimezone: true }).notNull().defaultNow(),
+        updatedAt: timestamp('updated_at', { mode: 'string', withTimezone: true }).notNull().defaultNow()
+    },
+    (table) => [index('collections_user_idx').on(table.userId)]
+);
+
+// ===== collection_media 表（收藏夹 ↔ 媒体 多对多） =====
+export const collectionMedia = pgTable(
+    'collection_media',
+    {
+        collectionId: uuid('collection_id')
+            .notNull()
+            .references(() => collections.id, { onDelete: 'cascade' }),
+        mediaId: uuid('media_id')
+            .notNull()
+            .references(() => media.id, { onDelete: 'cascade' }),
+        createdAt: timestamp('created_at', { mode: 'string', withTimezone: true }).notNull().defaultNow()
+    },
+    (table) => [
+        uniqueIndex('collection_media_pk_idx').on(table.collectionId, table.mediaId),
+        index('collection_media_media_idx').on(table.mediaId)
+    ]
+);
+
 // ===== 类型导出 =====
 export type User = typeof users.$inferSelect;
 export type NewUser = typeof users.$inferInsert;
@@ -145,3 +179,7 @@ export type Author = typeof authors.$inferSelect;
 export type NewAuthor = typeof authors.$inferInsert;
 export type ApiToken = typeof apiTokens.$inferSelect;
 export type NewApiToken = typeof apiTokens.$inferInsert;
+export type Collection = typeof collections.$inferSelect;
+export type NewCollection = typeof collections.$inferInsert;
+export type CollectionMedia = typeof collectionMedia.$inferSelect;
+export type NewCollectionMedia = typeof collectionMedia.$inferInsert;

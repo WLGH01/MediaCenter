@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { listMedia, getStats, getMedia, refreshStreamToken, uploadMedia, createMedia, updateMedia, deleteMedia, restoreMedia } from '../controllers/mediaController';
+import { getMediaCollections } from '../controllers/collectionController';
 import { authenticate, requireAuth } from '../middleware/auth';
 import upload from '../middleware/upload';
 
@@ -13,6 +14,9 @@ router.get('/stats', authenticate, getStats);
 
 // 获取单个媒体详情（根据权限过滤）
 router.get('/:id', authenticate, getMedia);
+
+// 查询某媒体被当前用户收藏在哪些收藏夹（须在 /:id/... 之前注册）
+router.get('/:id/collections', authenticate, getMediaCollections);
 
 // 刷新流媒体签名令牌（前端调用）
 router.get('/:id/stream-token', authenticate, refreshStreamToken);

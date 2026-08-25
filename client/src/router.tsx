@@ -21,6 +21,7 @@ const AdminPage = lazy(() => import('./pages/admin/AdminPage'));
 const TagsPage = lazy(() => import('./pages/admin/TagsPage'));
 const AuthorsPage = lazy(() => import('./pages/admin/AuthorsPage'));
 const UsersPage = lazy(() => import('./pages/admin/UsersPage'));
+const CollectionsPage = lazy(() => import('./pages/CollectionsPage'));
 
 export const router = createBrowserRouter([
     {
@@ -35,6 +36,7 @@ export const router = createBrowserRouter([
             { path: 'view/:id', element: <PlayerPage /> },
             { path: 'edit/:id', element: <EditMediaPage /> },
             { path: 'upload', element: <UploadPage /> },
+            { path: 'collections', element: <CollectionsPage /> },
             { path: 'admin', element: <AdminPage /> },
             { path: 'admin/tags', element: <TagsPage /> },
             { path: 'admin/authors', element: <AuthorsPage /> },

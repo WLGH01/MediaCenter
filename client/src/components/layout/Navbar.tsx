@@ -115,6 +115,9 @@ export default function Navbar() {
                         )}
                         {isLoggedIn ? (
                             <>
+                                <Link to="/collections" className={`nav-link ${isActive('/collections')}`}>
+                                    {t('nav.collections')}
+                                </Link>
                                 <Link to="/upload" className={`nav-link ${isActive('/upload')}`}>
                                     {t('nav.upload')}
                                 </Link>

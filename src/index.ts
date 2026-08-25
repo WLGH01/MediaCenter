@@ -285,6 +285,7 @@ import adminRoutes from './routes/admin';
 import tagsRoutes from './routes/tags';
 import authorsRoutes from './routes/authors';
 import usersRoutes from './routes/users';
+import collectionRoutes from './routes/collections';
 app.use('/api/auth', authLimiter, authRoutes);
 app.use('/api/media', apiLimiter, mediaRoutes);
 app.use('/api/stream', resolveStreamUser, streamLimiter, streamRoutes);
@@ -292,6 +293,7 @@ app.use('/api/admin', strictLimiter, adminRoutes);
 app.use('/api/tags', apiLimiter, tagsRoutes);
 app.use('/api/authors', apiLimiter, authorsRoutes);
 app.use('/api/users', apiLimiter, usersRoutes);
+app.use('/api/collections', apiLimiter, collectionRoutes);
 
 // 404 处理
 app.use((_req: Request, res: Response) => {

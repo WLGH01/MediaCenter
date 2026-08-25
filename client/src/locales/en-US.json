@@ -45,6 +45,7 @@
         "brand": "MediaCenter",
         "home": "Home",
         "mediaLib": "Library",
+        "collections": "Favorites",
         "admin": "Admin",
         "tags": "Tags",
         "authors": "Authors",
