@@ -8,7 +8,8 @@ on:
   workflow_dispatch: # 支持在 Actions 页面手动触发
 
 env:
-  IMAGE_NAME: ghcr.io/${{ github.repository_owner }}/mediacenter
+  # GHCR 镜像名必须全小写（owner 和 repo 均小写）
+  IMAGE_NAME: ghcr.io/wlgh01/mediacenter
   IMAGE_TAG: latest
 
 jobs:
