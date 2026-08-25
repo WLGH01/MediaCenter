@@ -134,9 +134,9 @@ Compose 会自动完成 PostgreSQL 健康检查，并持久化数据库数据。
 
 仓库已配置 GitHub Actions 工作流（[`.github/workflows/docker-build.yml`](.github/workflows/docker-build.yml)）：
 
-- **每次 push 到 `main` 分支**，自动构建 `ghcr.io/wlgh01/mediacenter:latest` 并推送到 GitHub Container Registry
+- **每次 push 到 `main` 分支**，自动构建 推送到 GitHub Container Registry
 - 也可在仓库 **Actions** 页面手动触发（`workflow_dispatch`）
-- **以后改完代码只需 `git push`，无需再手动构建镜像**；Unraid 等部署端拉取新镜像重启即可
+- **无需再手动构建镜像**；部署端拉取新镜像重启即可
 
 ```bash
 git add .
