@@ -232,12 +232,36 @@ export default function AdminPage() {
         });
     };
 
-    const copyToken = (token: string) => {
+    const copyToken = async (token: string) => {
+        // navigator.clipboard 仅在 HTTPS/localhost 可用；HTTP 下回退 execCommand
         try {
-            navigator.clipboard.writeText(token);
-            notify.success('已复制到剪贴板');
+            if (navigator.clipboard && window.isSecureContext) {
+                await navigator.clipboard.writeText(token);
+                notify.success('已复制到剪贴板');
+                return;
+            }
+            throw new Error('clipboard unavailable');
         } catch {
-            notify.error('复制失败，请手动复制');
+            try {
+                // 回退：临时 textarea + execCommand('copy')，HTTP 环境可用
+                const textarea = document.createElement('textarea');
+                textarea.value = token;
+                textarea.style.position = 'fixed';
+                textarea.style.opacity = '0';
+                textarea.setAttribute('readonly', '');
+                document.body.appendChild(textarea);
+                textarea.select();
+                textarea.setSelectionRange(0, token.length);
+                const ok = document.execCommand('copy');
+                document.body.removeChild(textarea);
+                if (ok) {
+                    notify.success('已复制到剪贴板');
+                } else {
+                    notify.error('复制失败，请手动选中复制');
+                }
+            } catch {
+                notify.error('复制失败，请手动选中复制');
+            }
         }
     };
 
