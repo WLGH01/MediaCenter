@@ -338,6 +338,17 @@ export const Api = {
         return request<{ message: string }>('POST', '/admin/reset-db');
     },
 
+    batchDeleteMedia(params: { ids?: string[]; pathPrefix?: string }) {
+        return request<{ message: string; count: number }>('POST', '/admin/batch-delete-media', params);
+    },
+
+    listMediaByPath(prefix: string) {
+        return request<{ items: { id: string; title: string; filePath: string }[] }>(
+            'GET',
+            `/admin/media-by-path?prefix=${encodeURIComponent(prefix)}`
+        );
+    },
+
     // 作者
     listAuthors(params?: { page?: number; limit?: number; search?: string; sortBy?: string; sortOrder?: string }) {
         const searchParams = new URLSearchParams();

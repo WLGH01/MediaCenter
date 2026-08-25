@@ -17,6 +17,81 @@ export default function AdminPage() {
     const [fileHashSearching, setFileHashSearching] = useState(false);
     const [fileHashResult, setFileHashResult] = useState<{ found: boolean; media?: { id: string; title: string } } | null>(null);
 
+    // 批量删除状态
+    const [batchDelPath, setBatchDelPath] = useState('');
+    const [batchDeleting, setBatchDeleting] = useState(false);
+    const [batchMediaList, setBatchMediaList] = useState<{ id: string; title: string; filePath: string }[]>([]);
+    const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+    const [searchingBatch, setSearchingBatch] = useState(false);
+
+    // 根据目录前缀搜索匹配的媒体
+    const searchMediaByPath = async () => {
+        const prefix = batchDelPath.trim();
+        if (!prefix) return;
+        setSearchingBatch(true);
+        try {
+            const res = await Api.listMediaByPath(prefix);
+            const matched = (res.items || []).map((item: any) => ({
+                id: item.id,
+                title: item.title,
+                filePath: item.filePath
+            }));
+            setBatchMediaList(matched);
+            setSelectedIds(new Set(matched.map((m: any) => m.id))); // 默认全选
+            notify.success(`已找到 ${matched.length} 个匹配的媒体文件`);
+        } catch (err) {
+            notify.error(err);
+        } finally {
+            setSearchingBatch(false);
+        }
+    };
+
+    const handleBatchDelete = () => {
+        const idsToDelete = Array.from(selectedIds);
+        if (idsToDelete.length === 0) {
+            notify.error('请选择至少一个媒体文件进行删除');
+            return;
+        }
+
+        showConfirm({
+            message: `确定要删除这 ${idsToDelete.length} 个媒体文件吗？这会从磁盘上彻底物理删除对应的源文件！此操作不可撤销。`,
+            danger: true,
+            confirmText: t('common.confirm'),
+            cancelText: t('common.cancel'),
+            onConfirm: async () => {
+                setBatchDeleting(true);
+                await notify.promise(Api.batchDeleteMedia({ ids: idsToDelete }), {
+                    loading: '正在执行批量删除...',
+                    success: (data: any) => `批量删除成功，共清理了 ${data.count} 个媒体物理文件及数据库记录`,
+                    onSuccess: () => {
+                        // 移除已删除的项
+                        setBatchMediaList(prev => prev.filter(m => !selectedIds.has(m.id)));
+                        setSelectedIds(new Set());
+                    }
+                });
+                setBatchDeleting(false);
+            }
+        });
+    };
+
+    const toggleSelectAll = () => {
+        if (selectedIds.size === batchMediaList.length) {
+            setSelectedIds(new Set());
+        } else {
+            setSelectedIds(new Set(batchMediaList.map(m => m.id)));
+        }
+    };
+
+    const toggleSelect = (id: string) => {
+        const next = new Set(selectedIds);
+        if (next.has(id)) {
+            next.delete(id);
+        } else {
+            next.add(id);
+        }
+        setSelectedIds(next);
+    };
+
     const runScan = async () => {
         setScanning(true);
         await notify.promise(Api.scanDirectory(scanPath), {
@@ -166,6 +241,76 @@ export default function AdminPage() {
                                 t('admin.fileHash.notFound')
                             )}
                         </p>
+                    )}
+                </div>
+
+                {/* 按路径前缀批量删除 */}
+                <div className="card section-card">
+                    <div className="card-header">
+                        <h2>按目录前缀批量删除/清理</h2>
+                    </div>
+                    <p className="text-secondary mb-16">
+                        输入目录路径前缀（如 <code>/media/test</code> 或 <code>/app/uploads</code>），检索已导入的文件并进行勾选，物理删除媒体及其磁盘文件。
+                    </p>
+                    <div className="admin-inline-form mb-16">
+                        <input
+                            className="form-input flex-1"
+                            value={batchDelPath}
+                            onChange={(e) => setBatchDelPath(e.target.value)}
+                            placeholder="输入要清理的容器内目录前缀，例如 /media"
+                            onKeyDown={(e) => e.key === 'Enter' && searchMediaByPath()}
+                        />
+                        <button className="btn btn-primary" onClick={searchMediaByPath} disabled={searchingBatch}>
+                            {searchingBatch ? '搜索中...' : '搜索匹配文件'}
+                        </button>
+                    </div>
+
+                    {batchMediaList.length > 0 && (
+                        <div style={{ marginTop: '16px' }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+                                <div>
+                                    已选择 {selectedIds.size} / {batchMediaList.length} 个媒体文件
+                                </div>
+                                <div className="flex-gap-8">
+                                    <button className="btn" onClick={toggleSelectAll}>
+                                        {selectedIds.size === batchMediaList.length ? '取消全选' : '全选'}
+                                    </button>
+                                    <button className="btn btn-danger" onClick={handleBatchDelete} disabled={batchDeleting || selectedIds.size === 0}>
+                                        {batchDeleting ? '删除中...' : '删除选中媒体'}
+                                    </button>
+                                </div>
+                            </div>
+                            
+                            <div style={{
+                                maxHeight: '300px',
+                                overflowY: 'auto',
+                                border: '1px solid var(--border)',
+                                borderRadius: '4px',
+                                padding: '12px',
+                                background: 'var(--bg-secondary)'
+                            }}>
+                                {batchMediaList.map(item => (
+                                    <label key={item.id} style={{
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        padding: '6px 0',
+                                        cursor: 'pointer',
+                                        borderBottom: '1px solid var(--border-light)'
+                                    }}>
+                                        <input
+                                            type="checkbox"
+                                            checked={selectedIds.has(item.id)}
+                                            onChange={() => toggleSelect(item.id)}
+                                            style={{ marginRight: '10px' }}
+                                        />
+                                        <div style={{ flex: 1 }}>
+                                            <div style={{ fontWeight: '500' }}>{item.title}</div>
+                                            <div style={{ fontSize: '12px', color: 'var(--text-secondary)', wordBreak: 'break-all' }}>{item.filePath}</div>
+                                        </div>
+                                    </label>
+                                ))}
+                            </div>
+                        </div>
                     )}
                 </div>
 

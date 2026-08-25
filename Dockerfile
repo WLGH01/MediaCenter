@@ -5,13 +5,10 @@ FROM node:24-alpine AS server-builder
 
 WORKDIR /app
 
-# 利用 BuildKit 缓存挂载加速 npm 依赖安装
-# --mount=type=cache 将 /root/.npm 持久化在宿主机，后续构建直接复用已下载的包
 COPY package.json package-lock.json ./
 RUN --mount=type=cache,target=/root/.npm \
     npm ci
 
-# 编译服务器代码（esbuild --packages=external → 单一 bundle 输出到 dist/index.js）
 COPY tsconfig.json ./
 COPY src/ ./src/
 RUN npm run server:build
@@ -23,24 +20,27 @@ FROM node:24-alpine AS client-builder
 
 WORKDIR /app/client
 
-# 安装客户端依赖
 COPY client/package.json client/package-lock.json ./
 RUN --mount=type=cache,target=/root/.npm \
     npm ci
 
-# 构建客户端（outDir: ../dist/public/ → 输出到 /app/dist/public/）
 COPY client/ ./
 RUN npm run build
 
 # ============================================================
-# Stage 3: Production Runtime
+# Stage 3: Production Runtime (All-in-One: Node + PostgreSQL)
 # ============================================================
 FROM node:24-alpine AS runner
 
 WORKDIR /app
 
-# 安装运行时依赖（ffmpeg 用于提取媒体元数据）
-RUN apk add --no-cache ffmpeg \
+# 安装运行时依赖：
+# - ffmpeg (提取媒体元数据)
+# - postgresql (本地数据库引擎)
+# - postgresql-contrib (提供 pg_trgm 扩展)
+# - postgresql-pgvector (提供 vector 扩展)
+# - su-exec (轻量级 gosu 替代品，用于在 entrypoint 中安全降权运行 postgres 和 mediacenter)
+RUN apk add --no-cache ffmpeg postgresql postgresql-contrib postgresql-pgvector su-exec \
     && addgroup -S -g 10001 mediacenter \
     && adduser -S -D -H -u 10001 -G mediacenter mediacenter
 
@@ -49,13 +49,20 @@ COPY package.json package-lock.json ./
 RUN --mount=type=cache,target=/root/.npm \
     npm ci --omit=dev && npm cache clean --force
 
-# 分别从各 Builder 复制产物，避免引入任何构建时文件
+# 复制编译产物
 COPY --from=server-builder /app/dist/index.js ./index.js
 COPY --from=client-builder /app/dist/public ./public
 
-RUN mkdir -p /app/uploads && chown -R mediacenter:mediacenter /app
-USER mediacenter
+# 复制启动脚本并赋予执行权限
+COPY entrypoint.sh ./entrypoint.sh
+RUN chmod +x ./entrypoint.sh
 
-EXPOSE 3000
+# 暴露端口 (3000: 媒体中心 Web, 5432: 本地内置 PG 可选暴露)
+EXPOSE 3000 5432
 
-CMD ["node", "index.js"]
+# PostgreSQL 数据默认卷路径
+ENV PGDATA=/var/lib/postgresql/data
+VOLUME /var/lib/postgresql/data
+VOLUME /app/uploads
+
+ENTRYPOINT ["/app/entrypoint.sh"]

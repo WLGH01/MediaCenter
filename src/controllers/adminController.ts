@@ -1,10 +1,11 @@
 import type { Request, Response } from 'express';
-import { sql, eq, like, count, asc, desc, type SQL } from 'drizzle-orm';
+import { sql, eq, like, count, asc, desc, inArray, type SQL } from 'drizzle-orm';
 import { isUuid, uuidv4 } from '../utils/uuid';
 import { getDatabase, schema, ensureDefaultUsers, syncSchemaInternal, API_USERNAME, apiUserId } from '../db/index';
 import { isString } from '../utils/env';
 import { hashPassword } from '../utils/hash';
 import { serverEvents } from '../utils/serverEvents';
+import { deleteFile } from '../utils/storage';
 import config from '../config';
 
 /** 系统保留账户（如 API 服务账户）：禁止删除/降级/封禁 */
@@ -348,6 +349,125 @@ export async function updateUserRole(req: Request, res: Response): Promise<void>
         });
     } catch (err) {
         console.error('[Admin] 更新用户角色失败:', err);
+        res.status(500).json({ error: 'error.internal' });
+    }
+}
+
+/**
+ * 按路径前缀搜索媒体文件 (仅限管理员)
+ * GET /api/admin/media-by-path?prefix=/media
+ * 返回 id / title / filePath，供批量删除勾选界面使用
+ */
+export async function listMediaByPath(req: Request, res: Response): Promise<void> {
+    try {
+        const prefix = isString(req.query.prefix) ? req.query.prefix.trim() : '';
+        if (!prefix) {
+            res.status(400).json({ error: 'admin.batchDelete.noTargets' });
+            return;
+        }
+
+        const db = getDatabase();
+        const records = await db
+            .select({
+                id: schema.media.id,
+                title: schema.media.title,
+                filePath: schema.media.filePath
+            })
+            .from(schema.media)
+            .where(like(schema.media.filePath, `${prefix}%`))
+            .orderBy(schema.media.filePath)
+            .limit(10000)
+            .execute();
+
+        res.json({ items: records });
+    } catch (err) {
+        console.error('[Admin] 按路径搜索媒体失败:', err);
+        res.status(500).json({ error: 'error.internal' });
+    }
+}
+
+/**
+ * 批量删除媒体文件 (仅限管理员，硬删除)
+ * POST /api/admin/batch-delete-media
+ * Body: { ids?: string[], pathPrefix?: string }
+ */
+export async function batchDeleteMedia(req: Request, res: Response): Promise<void> {
+    try {
+        const { ids, pathPrefix } = req.body;
+        const db = getDatabase();
+
+        let targetIds: string[] = [];
+        let usedPathPrefix = false;
+
+        if (Array.isArray(ids) && ids.length > 0) {
+            targetIds = ids.filter(isString);
+        } else if (isString(pathPrefix) && pathPrefix.trim() !== '') {
+            usedPathPrefix = true;
+            const prefix = pathPrefix.trim();
+            // 查询指定路径前缀的所有媒体 ID
+            const records = await db
+                .select({ id: schema.media.id })
+                .from(schema.media)
+                .where(like(schema.media.filePath, `${prefix}%`))
+                .execute();
+            targetIds = records.map(r => r.id);
+        }
+
+        if (targetIds.length === 0) {
+            // 按路径前缀查询但没有匹配 → 返回 0 而非报错（前端据此提示"无匹配"）
+            if (usedPathPrefix) {
+                res.json({ message: 'admin.batchDelete.noMatch', count: 0 });
+                return;
+            }
+            res.status(400).json({ error: 'admin.batchDelete.noTargets' });
+            return;
+        }
+
+        // 分批查询物理文件路径进行物理删除 (避免 SQL 参数上限)
+        const BATCH_SIZE = 500;
+        let deletedCount = 0;
+
+        for (let i = 0; i < targetIds.length; i += BATCH_SIZE) {
+            const batchIds = targetIds.slice(i, i + BATCH_SIZE);
+            const records = await db
+                .select({
+                    id: schema.media.id,
+                    filePath: schema.media.filePath,
+                    thumbPath: schema.media.thumbPath
+                })
+                .from(schema.media)
+                .where(inArray(schema.media.id, batchIds))
+                .execute();
+
+            for (const record of records) {
+                // 删除物理媒体文件
+                deleteFile(record.filePath);
+                // 删除缩略图
+                if (record.thumbPath) {
+                    deleteFile(record.thumbPath);
+                }
+            }
+
+            // 从关联表和主表中删除
+            await db.delete(schema.mediaTags).where(inArray(schema.mediaTags.mediaId, batchIds)).execute();
+            await db.delete(schema.media).where(inArray(schema.media.id, batchIds)).execute();
+            
+            deletedCount += records.length;
+        }
+
+        // 广播批量删除事件，通知客户端刷新
+        serverEvents.emit('media.updated', {
+            type: 'deleted_all',
+            actorId: req.user?.id
+        });
+
+        console.log(`[Admin] 批量硬删除成功：共删除了 ${deletedCount} 条媒体记录及物理文件`);
+        res.json({
+            message: 'admin.batchDelete.success',
+            count: deletedCount
+        });
+    } catch (err) {
+        console.error('[Admin] 批量删除失败:', err);
         res.status(500).json({ error: 'error.internal' });
     }
 }

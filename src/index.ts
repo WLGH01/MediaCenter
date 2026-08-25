@@ -75,6 +75,7 @@ app.use((_req: Request, res: Response, next: NextFunction) => {
 app.use(
     helmet({
         contentSecurityPolicy: {
+            useDefaults: true,
             directives: {
                 defaultSrc: ["'self'"],
                 scriptSrc: ["'self'"],                       // 生产构建无内联脚本（含 SW 注册，均为外部文件）
@@ -85,6 +86,7 @@ app.use(
                 fontSrc: ["'self'", 'data:'],
                 workerSrc: ["'self'"],                       // Service Worker（离线 + 缩略图缓存）
                 frameAncestors: ["'none'"],                  // 禁止被 iframe 嵌入（点击劫持防护）
+                upgradeInsecureRequests: null,               // 允许非 HTTPS (HTTP) 环境下运行，避免强制升级导致空白页
                 reportUri: '/api/csp-report'                 // 违规上报（只记录不阻断）
             }
         },

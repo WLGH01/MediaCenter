@@ -1,0 +1,36 @@
+<?xml version="1.0"?>
+<Container version="2">
+  <Name>MediaCenter</Name>
+  <Repository>ghcr.io/wlgh01/mediacenter:latest</Repository>
+  <Registry>https://github.com/users/wlgh01/packages/container/package/mediacenter</Registry>
+  <Network>bridge</Network>
+  <MyIP/>
+  <Shell>sh</Shell>
+  <Privileged>false</Privileged>
+  <Support/>
+  <Project/>
+  <Overview>一个内置 PostgreSQL 数据库的轻量级媒体中心，一键部署，支持视频、音频、图片预览，带有精美的 React 前端和强大的 FFmpeg 元数据提取后台。</Overview>
+  <Category>MediaApp: Video: Audio: Photos:</Category>
+  <WebUI>http://[IP]:[PORT_3000]/</WebUI>
+  <TemplateURL/>
+  <Icon>https://raw.githubusercontent.com/wlgh01/mediacenter/main/client/public/favicon.svg</Icon>
+  <ExtraParams/>
+  <PostArgs/>
+  <CPUset/>
+  <DateInstalled/>
+  <DonateText/>
+  <DonateLink/>
+  <Description>一个内置 PostgreSQL 数据库的轻量级媒体中心，一键部署，支持视频、音频、图片预览，带有精美的 React 前端和强大的 FFmpeg 元数据提取后台。</Description>
+  <Config Name="Web Port" Target="3000" Default="3000" Mode="tcp" Description="容器监听的 Web 及 API 端口" Type="Port" Display="always" Required="true" Mask="false">3000</Config>
+  <Config Name="Uploads Directory" Target="/app/uploads" Default="/mnt/user/appdata/mediacenter/uploads" Mode="rw" Description="网页上传的媒体文件存储目录（请勿与其他映射共用此容器路径）" Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/mediacenter/uploads</Config>
+  <Config Name="Media Library Directory" Target="/media" Default="/mnt/user/resource/MediaCenter" Mode="rw" Description="本地媒体库目录（挂载到 /media，供目录扫描导入，不会与上传目录冲突）" Type="Path" Display="always" Required="true" Mask="false">/mnt/user/resource/MediaCenter</Config>
+  <Config Name="PostgreSQL Data Directory" Target="/var/lib/postgresql/data" Default="/mnt/user/appdata/mediacenter/postgres" Mode="rw" Description="内置 PostgreSQL 数据库的数据持久化目录" Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/mediacenter/postgres</Config>
+  <Config Name="JWT_SECRET" Target="JWT_SECRET" Default="replace-with-openssl-rand-hex-32" Mode="" Description="用于 JWT 加密的密钥，可以使用 openssl rand -hex 32 生成" Type="Variable" Display="always" Required="true" Mask="true">replace-with-openssl-rand-hex-32</Config>
+  <Config Name="ADMIN_USERNAME" Target="ADMIN_USERNAME" Default="admin" Mode="" Description="初始管理员用户名" Type="Variable" Display="always" Required="true" Mask="false">admin</Config>
+  <Config Name="ADMIN_PASSWORD" Target="ADMIN_PASSWORD" Default="replace-with-a-long-password" Mode="" Description="初始管理员密码" Type="Variable" Display="always" Required="true" Mask="true">replace-with-a-long-password</Config>
+  <Config Name="UPLOAD_DIR" Target="UPLOAD_DIR" Default="/app/uploads" Mode="" Description="媒体文件上传目录，容器内建议设为 /app/uploads" Type="Variable" Display="always" Required="true" Mask="false">/app/uploads</Config>
+  <Config Name="PORT" Target="PORT" Default="3000" Mode="" Description="应用内部监听端口" Type="Variable" Display="always" Required="true" Mask="false">3000</Config>
+  <Config Name="POSTGRES_USER" Target="POSTGRES_USER" Default="mediacenter" Mode="" Description="内置 PostgreSQL 数据库用户名" Type="Variable" Display="always" Required="true" Mask="false">mediacenter</Config>
+  <Config Name="POSTGRES_PASSWORD" Target="POSTGRES_PASSWORD" Default="change-me" Mode="" Description="内置 PostgreSQL 数据库密码" Type="Variable" Display="always" Required="true" Mask="true">change-me</Config>
+  <Config Name="POSTGRES_DB" Target="POSTGRES_DB" Default="mediacenter" Mode="" Description="内置 PostgreSQL 数据库名称" Type="Variable" Display="always" Required="true" Mask="false">mediacenter</Config>
+</Container>

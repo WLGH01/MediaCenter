@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { scanMediaFiles } from '../controllers/scanController';
-import { resetDatabase, deleteUser, toggleBan, listUsers, updateUserRole, createUser } from '../controllers/adminController';
+import { resetDatabase, deleteUser, toggleBan, listUsers, updateUserRole, createUser, batchDeleteMedia, listMediaByPath } from '../controllers/adminController';
 import { authenticate, requireAuth, requireAdmin } from '../middleware/auth';
 
 const router = Router();
@@ -25,6 +25,12 @@ router.post('/users/:id/toggle-ban', toggleBan);
 
 // 扫描目录导入媒体文件
 router.post('/scan', scanMediaFiles);
+
+// 按路径前缀搜索媒体文件（供批量删除勾选）
+router.get('/media-by-path', listMediaByPath);
+
+// 批量删除媒体文件接口
+router.post('/batch-delete-media', batchDeleteMedia);
 
 // 重置数据库（清空 + 重建 + 初始化）
 router.post('/reset-db', resetDatabase);

@@ -92,6 +92,29 @@ npm run dev
 
 ## 🐳 Docker 部署（推荐）
 
+### 方式一：All-in-One 镜像（内置 PostgreSQL，无需额外数据库）
+
+本项目已打包为 **All-in-One 镜像**（内置 PostgreSQL + pgvector + pg_trgm + ffmpeg），一条命令即可启动：
+
+```bash
+docker run -d --name mediacenter \
+  -e ADMIN_USERNAME=admin \
+  -e ADMIN_PASSWORD='替换为强密码' \
+  -e POSTGRES_PASSWORD='替换为数据库密码' \
+  -e JWT_SECRET='openssl rand -hex 32' \
+  -p 3000:3000 \
+  -v /your/media/library:/media \
+  -v /your/uploads:/app/uploads \
+  -v /your/postgres-data:/var/lib/postgresql/data \
+  ghcr.io/wlgh01/mediacenter:latest
+```
+
+- `/media`：本地媒体库目录（扫描导入用，可选）
+- `/app/uploads`：网页上传的文件目录
+- `/var/lib/postgresql/data`：内置 PostgreSQL 数据持久化
+
+### 方式二：Compose（应用 + 独立 PostgreSQL）
+
 ```bash
 cp .env.example .env
 # 生产环境必须修改所有 replace/change-me 占位值
@@ -106,6 +129,26 @@ docker compose up -d --build
 | PostgreSQL | Compose 内部 | 不建议直接暴露到公网 |
 
 Compose 会自动完成 PostgreSQL 健康检查，并持久化数据库数据。媒体目录由 `MEDIA_DIR` 映射到容器 `/app/uploads`。
+
+### ⚡ 自动构建（GitHub Actions）
+
+仓库已配置 GitHub Actions 工作流（[`.github/workflows/docker-build.yml`](.github/workflows/docker-build.yml)）：
+
+- **每次 push 到 `main` 分支**，自动构建 `ghcr.io/wlgh01/mediacenter:latest` 并推送到 GitHub Container Registry
+- 也可在仓库 **Actions** 页面手动触发（`workflow_dispatch`）
+- **以后改完代码只需 `git push`，无需再手动构建镜像**；Unraid 等部署端拉取新镜像重启即可
+
+```bash
+git add .
+git commit -m "update"
+git push
+```
+
+### 🖥️ Unraid 部署
+
+1. 将 [`mediacenter.xml`](mediacenter.xml) 放到 Unraid 的 `/boot/config/plugins/dockerMan/templates-user/` 目录
+2. Unraid 的 Docker 页面 → **Add Container** → 选择 **MediaCenter** 模板
+3. 按需配置端口、路径映射和环境变量，应用即可
 
 ### 生产部署建议
 
@@ -176,11 +219,14 @@ API 基础路径：`/api`。
 
 ```text
 src/                 Express API、认证、数据库、扫描、流媒体
-client/src/          React 页面、组件、状态管理与主题
+client/src/          React 页面、组件、状态管理与查询
 client/public/       PWA 图标与离线页面
 docs/API.md           API 文档
-Dockerfile            多阶段生产镜像
+Dockerfile            多阶段生产镜像（内置 PostgreSQL + ffmpeg）
 docker-compose.yml    应用 + PostgreSQL 编排
+entrypoint.sh         容器启动脚本（初始化并启动内置 PostgreSQL）
+mediacenter.xml       Unraid Docker 模板
+.github/workflows/    GitHub Actions 自动构建
 ```
 
 ## 🔐 许可证
