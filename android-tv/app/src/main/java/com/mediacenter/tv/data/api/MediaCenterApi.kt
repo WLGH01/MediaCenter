@@ -1,6 +1,14 @@
 package com.mediacenter.tv.data.api
 
-import com.mediacenter.tv.data.model.*
+import com.mediacenter.tv.data.model.Author
+import com.mediacenter.tv.data.model.CollectionItem
+import com.mediacenter.tv.data.model.LoginRequest
+import com.mediacenter.tv.data.model.LoginResponse
+import com.mediacenter.tv.data.model.MediaDetailResponse
+import com.mediacenter.tv.data.model.MediaItem
+import com.mediacenter.tv.data.model.MediaListResponse
+import com.mediacenter.tv.data.model.StreamTokenResponse
+import com.mediacenter.tv.data.model.Tag
 import retrofit2.Response
 import retrofit2.http.*
 
