@@ -16,10 +16,6 @@ android {
         versionName = "1.0.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
-
-        ndk {
-            abiFilters += listOf("arm64-v8a", "armeabi-v7a", "x86", "x86_64")
-        }
     }
 
     buildTypes {
@@ -69,8 +65,10 @@ dependencies {
     // Coil
     implementation(libs.coil.compose)
 
-    // GSYVideoPlayer (IJK + ExoPlayer 内核，自带 UI 控制器，TV D-Pad 支持)
-    implementation(libs.gsy.videoplayer)
+    // ExoPlayer / Media3
+    implementation(libs.androidx.media3.exoplayer)
+    implementation(libs.androidx.media3.ui)
+    implementation(libs.androidx.media3.common)
 
     // Coroutines
     implementation(libs.kotlinx.coroutines.android)

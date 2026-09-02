@@ -1,6 +1,8 @@
 package com.mediacenter.tv.ui.screens
 
+import android.net.Uri
 import androidx.activity.compose.BackHandler
+import androidx.annotation.OptIn
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -19,21 +21,54 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.media3.common.MediaItem
+import androidx.media3.common.PlaybackException
+import androidx.media3.common.Player
+import androidx.media3.common.util.UnstableApi
+import androidx.media3.datasource.DefaultHttpDataSource
+import androidx.media3.datasource.ResolvingDataSource
+import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
+import androidx.media3.ui.PlayerView
 import com.mediacenter.tv.data.api.ApiClient
+import com.mediacenter.tv.data.api.MediaCenterApi
 import com.mediacenter.tv.data.model.MediaItem as MediaModel
-import com.shuyu.gsyvideoplayer.video.StandardGSYVideoPlayer
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeoutOrNull
 
 /**
- * 使用 GSYVideoPlayer 的播放页：
- * - StandardGSYVideoPlayer 自带 UI 控制器（进度条、播放/暂停按钮）
- * - IJKPlayer 内核（FFmpeg，格式兼容性好，默认内核）
- * - 签名 URL 鉴权：播放前获取签名 URL 直接播放
- * - 返回键退出播放
- *
- * GSYVideoPlayer 内部处理了 D-Pad 按键（左右 seek、OK 播放/暂停）、
- * 生命周期管理、错误提示，不需要我们手动处理。
+ * 签名 URL 续签器：签名 URL 默认 3 分钟过期，
+ * ExoPlayer 每次开新连接时检查并自动续签。
  */
+@OptIn(UnstableApi::class)
+private class StreamUrlRefresher(
+    private val api: MediaCenterApi,
+    private val context: android.content.Context,
+    private val mediaId: String
+) : ResolvingDataSource.Resolver {
+    override fun resolveDataSpec(dataSpec: androidx.media3.datasource.DataSpec): androidx.media3.datasource.DataSpec {
+        val uri = dataSpec.uri
+        val expires = uri.getQueryParameter("expires")?.toLongOrNull() ?: return dataSpec
+        val now = System.currentTimeMillis() / 1000
+        if (expires - now > 60) return dataSpec
+
+        val refreshedUrl = runBlocking {
+            try {
+                withTimeoutOrNull(10_000L) {
+                    val res = api.getStreamToken(mediaId)
+                    if (res.isSuccessful) ApiClient.resolveUrl(context, res.body()?.streamUrl)
+                    else null
+                }
+            } catch (e: Exception) { null }
+        } ?: return dataSpec
+
+        return dataSpec.buildUpon().setUri(Uri.parse(refreshedUrl)).build()
+    }
+}
+
+@OptIn(UnstableApi::class)
 @Composable
 fun VideoPlayerScreen(
     media: MediaModel,
@@ -73,6 +108,7 @@ fun VideoPlayerScreen(
     }
 
     if (isLoading || streamUrl == null) {
+        // 加载中 / 出错占位
         Box(
             modifier = Modifier.fillMaxSize().background(Color.Black),
             contentAlignment = Alignment.Center
@@ -98,31 +134,71 @@ fun VideoPlayerScreen(
         return
     }
 
-    // ===== GSYVideoPlayer 播放 =====
+    // ===== 播放器（使用 PlayerView 自带控制器） =====
     val currentUrl = streamUrl!!
+    val appContext = context.applicationContext
 
-    // GSY 播放器实例（remember 确保重组时不重建）
-    val gsyPlayer = remember(media.id, currentUrl, retryKey) {
-        StandardGSYVideoPlayer(context).apply {
-            // setUp(url, cacheWithExternal, title)
-            setUp(currentUrl, false, media.displayTitle)
-            // 开始播放
-            startPlayLogic()
-        }
+    val exoPlayer = remember(media.id, currentUrl, retryKey) {
+        val api = ApiClient.getApi(context)
+        val httpFactory = DefaultHttpDataSource.Factory()
+            .setAllowCrossProtocolRedirects(true)
+            .setConnectTimeoutMs(15_000)
+            .setReadTimeoutMs(30_000)
+            .setUserAgent("MediaCenterTV/1.0")
+
+        val resolvingFactory = ResolvingDataSource.Factory(
+            httpFactory,
+            StreamUrlRefresher(api, appContext, media.id)
+        )
+
+        ExoPlayer.Builder(appContext)
+            .setMediaSourceFactory(DefaultMediaSourceFactory(resolvingFactory))
+            .build()
+            .apply {
+                setMediaItem(MediaItem.fromUri(Uri.parse(currentUrl)))
+                prepare()
+                playWhenReady = true
+            }
     }
 
-    // 离开播放页时释放资源
-    DisposableEffect(gsyPlayer) {
+    // 错误监听 + 释放
+    DisposableEffect(exoPlayer) {
+        val listener = object : Player.Listener {
+            override fun onPlayerError(error: PlaybackException) {
+                loadError = when (error.errorCode) {
+                    PlaybackException.ERROR_CODE_IO_BAD_HTTP_STATUS ->
+                        "播放被拒绝（鉴权失败或签名过期），请重试"
+                    PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED ->
+                        "网络连接失败，请检查服务器"
+                    else -> "播放失败: ${error.localizedMessage ?: error.errorCodeName}"
+                }
+                try { exoPlayer.pause() } catch (_: Exception) {}
+            }
+        }
+        exoPlayer.addListener(listener)
         onDispose {
             try {
-                gsyPlayer.release()
+                exoPlayer.removeListener(listener)
+                exoPlayer.stop()
+                exoPlayer.release()
             } catch (_: Exception) {}
         }
     }
 
+    // PlayerView 自带控制器：D-Pad 左右 seek、OK 播放/暂停、返回退出
     Box(modifier = Modifier.fillMaxSize().background(Color.Black)) {
         AndroidView(
-            factory = { gsyPlayer },
+            factory = { ctx ->
+                PlayerView(ctx).apply {
+                    useController = true
+                    player = exoPlayer
+                    // 默认显示控制器，几秒后自动隐藏
+                    setShowBuffering(PlayerView.SHOW_BUFFERING_WHEN_PLAYING)
+                }
+            },
+            update = { view ->
+                if (view.player !== exoPlayer) view.player = exoPlayer
+            },
             modifier = Modifier.fillMaxSize()
         )
 
