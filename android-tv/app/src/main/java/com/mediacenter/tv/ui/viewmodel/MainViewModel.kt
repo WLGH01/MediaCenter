@@ -26,9 +26,38 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val _serverUrl = MutableStateFlow(ApiClient.getServerUrl(getApplication()))
     val serverUrl: StateFlow<String> = _serverUrl
 
+    private val _isLoggedIn = MutableStateFlow(!ApiClient.getToken(getApplication()).isNullOrEmpty())
+    val isLoggedIn: StateFlow<Boolean> = _isLoggedIn
+
     private var currentPage = 1
 
     init {
+        loadMedia()
+    }
+
+    fun login(username: String, password: String, onResult: (Boolean, String?) -> Unit) {
+        viewModelScope.launch {
+            try {
+                val api = ApiClient.getApi(getApplication())
+                val response = api.login(com.mediacenter.tv.data.model.LoginRequest(username, password))
+                if (response.isSuccessful && response.body() != null) {
+                    val token = response.body()!!.token
+                    ApiClient.saveToken(getApplication(), token)
+                    _isLoggedIn.value = true
+                    loadMedia()
+                    onResult(true, null)
+                } else {
+                    onResult(false, "登录失败: ${response.code()} ${response.message()}")
+                }
+            } catch (e: Exception) {
+                onResult(false, "网络错误: ${e.localizedMessage}")
+            }
+        }
+    }
+
+    fun logout() {
+        ApiClient.saveToken(getApplication(), null)
+        _isLoggedIn.value = false
         loadMedia()
     }
 
@@ -67,8 +96,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     val data = response.body()!!
                     _uiState.value = MediaUiState.Success(
                         items = data.items,
-                        totalPages = data.totalPages,
-                        currentPage = data.page
+                        totalPages = data.pagination?.totalPages ?: 1,
+                        currentPage = data.pagination?.page ?: 1
                     )
                 } else {
                     _uiState.value = MediaUiState.Error("加载失败: ${response.code()} ${response.message()}")

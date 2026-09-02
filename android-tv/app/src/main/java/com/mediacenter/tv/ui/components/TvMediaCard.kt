@@ -36,8 +36,8 @@ fun TvMediaCard(
     val context = LocalContext.current
     var isFocused by remember { mutableStateOf(false) }
 
-    val scale by animateFloatAsState(targetValue = if (isFocused) 1.08f else 1.0f, label = "scale")
-    val borderColor by animateColorAsState(targetValue = if (isFocused) Color(0xFF6466F1) else Color.Transparent, label = "border")
+    val scale by animateFloatAsState(targetValue = if (isFocused) 1.06f else 1.0f, label = "scale")
+    val borderColor by animateColorAsState(targetValue = if (isFocused) Color(0xFF89B4FA) else Color.Transparent, label = "border")
 
     val thumbnailUrl = remember(media.id) {
         ApiClient.getThumbnailUrl(context, media.id)
@@ -46,10 +46,10 @@ fun TvMediaCard(
     Column(
         modifier = modifier
             .scale(scale)
-            .width(180.dp)
-            .clip(RoundedCornerShape(12.dp))
-            .background(Color(0xFF1E1E2E))
-            .border(2.dp, borderColor, RoundedCornerShape(12.dp))
+            .width(200.dp)
+            .clip(RoundedCornerShape(14.dp))
+            .background(if (isFocused) Color(0xFF313244) else Color(0xFF1E1E2E))
+            .border(2.5.dp, borderColor, RoundedCornerShape(14.dp))
             .onFocusChanged { isFocused = it.isFocused }
             .focusable()
             .clickable { onClick() }
@@ -57,7 +57,7 @@ fun TvMediaCard(
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(110.dp)
+                .height(125.dp)
                 .background(Color(0xFF181825))
         ) {
             AsyncImage(
@@ -72,7 +72,7 @@ fun TvMediaCard(
 
             // 类型标签 (Video/Audio/Image)
             Text(
-                text = media.type.uppercase(),
+                text = media.mediaType.uppercase(),
                 color = Color.White,
                 fontSize = 10.sp,
                 fontWeight = FontWeight.Bold,
@@ -80,7 +80,7 @@ fun TvMediaCard(
                     .align(Alignment.TopEnd)
                     .padding(6.dp)
                     .background(
-                        color = when (media.type) {
+                        color = when (media.mediaType) {
                             "video" -> Color(0xE6E53935)
                             "audio" -> Color(0xE643A047)
                             else -> Color(0xE61E88E5)
@@ -91,7 +91,7 @@ fun TvMediaCard(
             )
 
             // 视频时长显示
-            if (media.type == "video" && media.duration != null) {
+            if (media.mediaType == "video" && media.duration != null) {
                 val durationSec = media.duration.toInt()
                 val min = durationSec / 60
                 val sec = durationSec % 60
@@ -117,7 +117,7 @@ fun TvMediaCard(
                 .padding(8.dp)
         ) {
             Text(
-                text = media.title ?: media.originalName,
+                text = media.displayTitle,
                 color = if (isFocused) Color.White else Color(0xFFCDD6F4),
                 fontSize = 13.sp,
                 fontWeight = if (isFocused) FontWeight.Bold else FontWeight.Normal,
@@ -125,9 +125,10 @@ fun TvMediaCard(
                 overflow = TextOverflow.Ellipsis
             )
 
-            media.author?.let { author ->
+            val authorDisplay = media.author?.name ?: media.authorName ?: media.uploaderName
+            authorDisplay?.let { name ->
                 Text(
-                    text = author.name,
+                    text = name,
                     color = Color(0xFFA6ADC8),
                     fontSize = 11.sp,
                     maxLines = 1,

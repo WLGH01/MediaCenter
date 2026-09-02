@@ -70,7 +70,7 @@ fun VideoPlayerScreen(
 
         // 视频标题浮层
         Text(
-            text = media.title ?: media.originalName,
+            text = media.displayTitle,
             color = Color.White,
             fontSize = 18.sp,
             modifier = Modifier

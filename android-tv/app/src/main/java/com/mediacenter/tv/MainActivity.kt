@@ -62,7 +62,7 @@ class MainActivity : ComponentActivity() {
                         )
                     }
                     is Screen.Player -> {
-                        when (screen.media.type) {
+                        when (screen.media.mediaType) {
                             "video", "audio" -> {
                                 VideoPlayerScreen(
                                     media = screen.media,

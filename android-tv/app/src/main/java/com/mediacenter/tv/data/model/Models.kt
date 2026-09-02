@@ -20,38 +20,54 @@ data class LoginResponse(
 
 data class MediaItem(
     val id: String,
-    val title: String?,
-    val originalName: String,
-    val type: String, // "video", "audio", "image"
-    val size: Long,
-    val duration: Double?,
-    val width: Int?,
-    val height: Int?,
-    val mimeType: String,
-    val visibility: String,
-    val createdAt: String,
-    val author: Author?,
+    val title: String? = null,
+    val originalName: String? = null,
+    val fileSize: Long? = 0L,
+    val duration: Double? = null,
+    val width: Int? = null,
+    val height: Int? = null,
+    val mimeType: String? = null,
+    val visibility: String? = null,
+    val createdAt: String? = null,
+    val authorName: String? = null,
+    val uploaderName: String? = null,
+    val author: Author? = null,
     val tags: List<Tag>? = emptyList()
-)
+) {
+    val displayTitle: String
+        get() = title?.ifBlank { null } ?: originalName?.ifBlank { null } ?: "未命名媒体"
+
+    val mediaType: String
+        get() = when {
+            mimeType?.startsWith("video/") == true -> "video"
+            mimeType?.startsWith("audio/") == true -> "audio"
+            mimeType?.startsWith("image/") == true -> "image"
+            else -> "video"
+        }
+}
 
 data class Author(
     val id: String,
     val name: String,
-    val avatarUrl: String?
+    val avatarUrl: String? = null
 )
 
 data class Tag(
     val id: String,
     val name: String,
-    val color: String?
+    val color: String? = null
+)
+
+data class Pagination(
+    val page: Int = 1,
+    val limit: Int = 20,
+    val total: Long = 0L,
+    val totalPages: Int = 1
 )
 
 data class MediaListResponse(
-    val items: List<MediaItem>,
-    val total: Long,
-    val page: Int,
-    val limit: Int,
-    val totalPages: Int
+    val items: List<MediaItem> = emptyList(),
+    val pagination: Pagination? = null
 )
 
 data class StreamTokenResponse(

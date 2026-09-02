@@ -94,7 +94,7 @@ fun HomeScreen(
                     modifier = Modifier.fillMaxSize(),
                     contentAlignment = Alignment.Center
                 ) {
-                    CircularProgressIndicator(color = Color(0xFF6466F1))
+                    CircularProgressIndicator(color = Color(0xFF89B4FA))
                 }
             }
             is MediaUiState.Error -> {
@@ -105,8 +105,11 @@ fun HomeScreen(
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         Text(text = state.message, color = Color(0xFFF38BA8), fontSize = 16.sp)
                         Spacer(modifier = Modifier.height(16.dp))
-                        Button(onClick = { viewModel.refresh() }) {
-                            Text("重试")
+                        Button(
+                            onClick = { viewModel.refresh() },
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF313244))
+                        ) {
+                            Text("重试", color = Color.White)
                         }
                     }
                 }
@@ -121,9 +124,9 @@ fun HomeScreen(
                     }
                 } else {
                     LazyVerticalGrid(
-                        columns = GridCells.Adaptive(minSize = 170.dp),
-                        horizontalArrangement = Arrangement.spacedBy(20.dp),
-                        verticalArrangement = Arrangement.spacedBy(24.dp),
+                        columns = GridCells.Adaptive(minSize = 190.dp),
+                        horizontalArrangement = Arrangement.spacedBy(24.dp),
+                        verticalArrangement = Arrangement.spacedBy(28.dp),
                         modifier = Modifier.fillMaxSize()
                     ) {
                         items(state.items, key = { it.id }) { item ->

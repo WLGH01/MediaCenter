@@ -47,7 +47,7 @@ fun ImageViewerScreen(
         )
 
         Text(
-            text = media.title ?: media.originalName,
+            text = media.displayTitle,
             color = Color.White,
             fontSize = 16.sp,
             modifier = Modifier
