@@ -18,16 +18,17 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.focus.FocusRequester
-import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.key.*
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
@@ -40,6 +41,7 @@ import androidx.media3.ui.PlayerView
 import com.mediacenter.tv.data.api.ApiClient
 import com.mediacenter.tv.data.api.MediaCenterApi
 import com.mediacenter.tv.data.model.MediaItem as MediaModel
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.runBlocking
@@ -47,11 +49,10 @@ import kotlinx.coroutines.withTimeoutOrNull
 
 /**
  * 签名 URL 续签器：服务端签名 URL 默认 3 分钟过期。
- * ExoPlayer 每次打开新的 HTTP 连接（Range 请求 / seek / 断点续传）都会先经过
- * resolveDataSpec；此处检测 expires 参数，若临近过期则同步换取新的签名 URL，
- * 从而支持长时间不间断播放。
+ * ExoPlayer 每次打开新的 HTTP 连接都会先经过 resolveDataSpec；
+ * 此处检测 expires 参数，若临近过期则同步换取新的签名 URL。
  *
- * 注：resolveDataSpec 在 ExoPlayer 的加载线程（非主线程）调用，runBlocking 安全；
+ * resolveDataSpec 在 ExoPlayer 的加载线程（非主线程）调用，runBlocking 安全；
  * 加 10 秒超时防止网络异常时无限占用加载线程。
  */
 @OptIn(UnstableApi::class)
@@ -63,7 +64,6 @@ private class StreamUrlRefresher(
 
     override fun resolveDataSpec(dataSpec: androidx.media3.datasource.DataSpec): androidx.media3.datasource.DataSpec {
         val uri = dataSpec.uri
-        // 非签名 URL（无 expires 参数）直接放行
         val expires = uri.getQueryParameter("expires")?.toLongOrNull() ?: return dataSpec
         val now = System.currentTimeMillis() / 1000
         if (expires - now > 60) return dataSpec
@@ -102,10 +102,11 @@ fun VideoPlayerScreen(
     var loadError by remember { mutableStateOf<String?>(null) }
     var retryKey by remember { mutableIntStateOf(0) }
 
-    // 首次进入：向后端换取签名流地址（携带登录态，服务端按用户权限签发）
+    // 首次进入：向后端换取签名流地址
     LaunchedEffect(media.id, retryKey) {
         isLoading = true
         loadError = null
+        streamUrl = null
         try {
             val api = ApiClient.getApi(context)
             val response = api.getStreamToken(media.id)
@@ -128,6 +129,8 @@ fun VideoPlayerScreen(
 
     if (!isLoading && streamUrl != null) {
         val currentUrl = streamUrl!!
+        // 使用 applicationContext 创建 ExoPlayer，避免 Activity 上下文泄漏
+        val appContext = context.applicationContext
         val exoPlayer = remember(media.id, currentUrl, retryKey) {
             val api = ApiClient.getApi(context)
             val httpFactory = DefaultHttpDataSource.Factory()
@@ -138,10 +141,10 @@ fun VideoPlayerScreen(
 
             val resolvingFactory = ResolvingDataSource.Factory(
                 httpFactory,
-                StreamUrlRefresher(api, context, media.id)
+                StreamUrlRefresher(api, appContext, media.id)
             )
 
-            ExoPlayer.Builder(context)
+            ExoPlayer.Builder(appContext)
                 .setMediaSourceFactory(DefaultMediaSourceFactory(resolvingFactory))
                 .build()
                 .apply {
@@ -151,8 +154,23 @@ fun VideoPlayerScreen(
                 }
         }
 
-        // ===== 播放状态轮询（进度/缓冲/播放态） =====
-        // try-catch 防御：player 已 release 而轮询协程尚未取消的极小竞态窗口
+        // ===== 生命周期管理：ON_STOP 暂停播放 =====
+        val lifecycleOwner = LocalLifecycleOwner.current
+        DisposableEffect(lifecycleOwner, exoPlayer) {
+            val observer = LifecycleEventObserver { _, event ->
+                try {
+                    if (event == Lifecycle.Event.ON_STOP && exoPlayer.isPlaying) {
+                        exoPlayer.pause()
+                    }
+                } catch (_: Exception) {}
+            }
+            lifecycleOwner.lifecycle.addObserver(observer)
+            onDispose {
+                lifecycleOwner.lifecycle.removeObserver(observer)
+            }
+        }
+
+        // ===== 播放状态轮询 =====
         var positionMs by remember { mutableLongStateOf(0L) }
         var durationMs by remember { mutableLongStateOf(0L) }
         var bufferedMs by remember { mutableLongStateOf(0L) }
@@ -167,51 +185,62 @@ fun VideoPlayerScreen(
                     bufferedMs = exoPlayer.bufferedPosition
                     isPlaying = exoPlayer.isPlaying
                     isBuffering = exoPlayer.playbackState == Player.STATE_BUFFERING
-                } catch (e: IllegalStateException) {
-                    // player 已释放，停止轮询
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
                     break
                 }
-                delay(500)
+                try {
+                    delay(500)
+                } catch (e: CancellationException) {
+                    break
+                }
             }
         }
 
-        // 播放错误监听
+        // 播放错误监听 + 资源释放
         DisposableEffect(exoPlayer) {
             val listener = object : Player.Listener {
                 override fun onPlayerError(error: PlaybackException) {
                     loadError = when (error.errorCode) {
-                        // Media3 将所有非 2xx HTTP 状态（401/403/404 等）归为 BAD_HTTP_STATUS
                         PlaybackException.ERROR_CODE_IO_BAD_HTTP_STATUS ->
                             "播放被拒绝（鉴权失败或签名过期），请重试"
+                        PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED ->
+                            "网络连接失败，请检查服务器是否在线"
+                        PlaybackException.ERROR_CODE_PARSING_UNSUPPORTED ->
+                            "不支持此媒体格式"
                         else -> "播放失败: ${error.localizedMessage ?: error.errorCodeName}"
                     }
-                    try {
-                        exoPlayer.pause()
-                    } catch (_: Exception) {
-                    }
+                    try { exoPlayer.pause() } catch (_: Exception) {}
                 }
             }
             exoPlayer.addListener(listener)
             onDispose {
-                exoPlayer.removeListener(listener)
-                exoPlayer.release()
+                try {
+                    exoPlayer.removeListener(listener)
+                    exoPlayer.stop()
+                    exoPlayer.release()
+                } catch (_: Exception) {}
             }
         }
 
-        // ===== 控制层显隐（4 秒无操作自动隐藏） =====
+        // ===== 控制层显隐 =====
         var controlsVisible by remember { mutableStateOf(true) }
         var interactionTick by remember { mutableIntStateOf(0) }
 
         LaunchedEffect(interactionTick) {
-            delay(CONTROLS_TIMEOUT_MS)
-            controlsVisible = false
+            try {
+                delay(CONTROLS_TIMEOUT_MS)
+                controlsVisible = false
+            } catch (e: CancellationException) {
+                // 离开播放器时取消，正常
+            }
         }
 
         fun togglePlayPause() {
             try {
                 if (exoPlayer.isPlaying) exoPlayer.pause() else exoPlayer.play()
-            } catch (_: Exception) {
-            }
+            } catch (_: Exception) {}
         }
 
         fun seekBy(deltaMs: Long) {
@@ -220,8 +249,7 @@ fun VideoPlayerScreen(
                 val target = (exoPlayer.currentPosition + deltaMs).coerceIn(0L, dur)
                 exoPlayer.seekTo(target)
                 positionMs = target
-            } catch (_: Exception) {
-            }
+            } catch (_: Exception) {}
         }
 
         fun markInteraction() {
@@ -229,21 +257,10 @@ fun VideoPlayerScreen(
             interactionTick++
         }
 
-        // 播放页主动抢占焦点，确保遥控按键能到达自绘控制层
-        val screenFocusRequester = remember { FocusRequester() }
-        LaunchedEffect(exoPlayer) {
-            try {
-                screenFocusRequester.requestFocus()
-            } catch (_: IllegalStateException) {
-                // 焦点节点尚未就绪，忽略（用户仍可用方向键移入）
-            }
-        }
-
         Box(
             modifier = Modifier
                 .fillMaxSize()
                 .background(Color.Black)
-                .focusRequester(screenFocusRequester)
                 .focusable()
                 .onPreviewKeyEvent { keyEvent ->
                     if (keyEvent.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
@@ -265,18 +282,18 @@ fun VideoPlayerScreen(
                     }
                 }
         ) {
+            // PlayerView：factory 中立即绑定 player
             AndroidView(
                 factory = { ctx ->
                     PlayerView(ctx).apply {
-                        useController = false // TV 遥控控制层由 Compose 自绘
+                        useController = false
+                        player = exoPlayer
                     }
                 },
                 update = { view ->
-                    // 重组时确保 PlayerView 始终绑定当前 player 实例
-                    if (view.player !== exoPlayer) view.player = exoPlayer
-                },
-                onRelease = { view ->
-                    view.player = null
+                    if (view.player !== exoPlayer) {
+                        view.player = exoPlayer
+                    }
                 },
                 modifier = Modifier.fillMaxSize()
             )
@@ -326,7 +343,6 @@ fun VideoPlayerScreen(
                         )
                         .padding(horizontal = 40.dp, vertical = 22.dp)
                 ) {
-                    // 标题 + 播放状态
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween,
@@ -349,7 +365,6 @@ fun VideoPlayerScreen(
 
                     Spacer(Modifier.height(10.dp))
 
-                    // 自绘进度条（轨道 + 缓冲 + 进度 + 游标）
                     if (durationMs > 0) {
                         val progress by animateFloatAsState(
                             targetValue = positionMs.toFloat() / durationMs,
@@ -386,7 +401,6 @@ fun VideoPlayerScreen(
                                     .align(Alignment.CenterStart)
                                     .background(Color(0xFF89B4FA), RoundedCornerShape(3.dp))
                             )
-                            // 游标圆点
                             Box(
                                 modifier = Modifier
                                     .align(Alignment.CenterStart)
@@ -399,7 +413,6 @@ fun VideoPlayerScreen(
 
                     Spacer(Modifier.height(8.dp))
 
-                    // 时间 + 操作提示
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween
