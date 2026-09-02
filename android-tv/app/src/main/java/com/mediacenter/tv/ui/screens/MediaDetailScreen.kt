@@ -6,6 +6,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -43,6 +44,7 @@ import com.mediacenter.tv.ui.viewmodel.MainViewModel
  *
  * 视觉规范：所有标签/作者 chip 统一使用 MediaChips 组件，胶囊形配色一致。
  */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun MediaDetailScreen(
     media: MediaItem,
