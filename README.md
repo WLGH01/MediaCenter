@@ -50,8 +50,9 @@
 - 管理面板支持用户、标签、作者、扫描和数据库维护
 - Docker 非 root、只读根文件系统、丢弃 capabilities
 
-### PWA 与主题
+### PWA、TV 与主题
 
+- Android TV 原生客户端（Jetpack Compose for TV + ExoPlayer，支持遥控器 D-Pad 交互）
 - Service Worker 离线缓存
 - 缩略图 Cache First 策略
 - 深色 / 浅色 / 跟随系统
@@ -220,13 +221,14 @@ API 基础路径：`/api`。
 ```text
 src/                 Express API、认证、数据库、扫描、流媒体
 client/src/          React 页面、组件、状态管理与查询
+android-tv/          Android TV 客户端 (Kotlin + Compose for TV + Media3 ExoPlayer)
 client/public/       PWA 图标与离线页面
 docs/API.md           API 文档
 Dockerfile            多阶段生产镜像（内置 PostgreSQL + ffmpeg）
 docker-compose.yml    应用 + PostgreSQL 编排
 entrypoint.sh         容器启动脚本（初始化并启动内置 PostgreSQL）
 mediacenter.xml       Unraid Docker 模板
-.github/workflows/    GitHub Actions 自动构建
+.github/workflows/    GitHub Actions 自动构建 (Docker 镜像 & Android TV APK)
 ```
 
 ## 🔐 许可证
