@@ -1,11 +1,7 @@
 name: Build and Push Docker Image
 
-# 推送代码到 main 分支时自动构建镜像并推送到 GHCR
-# 以后改完代码只需 git push，无需再手动构建 Docker
 on:
-  push:
-    branches: [main]
-  workflow_dispatch: # 支持在 Actions 页面手动触发
+  workflow_dispatch: # 仅支持在 Actions 页面手动点击触发
 
 env:
   # GHCR 镜像名必须全小写（owner 和 repo 均小写）
