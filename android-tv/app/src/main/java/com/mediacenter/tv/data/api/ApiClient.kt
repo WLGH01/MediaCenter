@@ -58,7 +58,7 @@ object ApiClient {
 
         val client = OkHttpClient.Builder()
             .connectTimeout(15, TimeUnit.SECONDS)
-            .readTimeout(30, TimeUnit.SECONDS)
+            .readTimeout(60, TimeUnit.SECONDS)
             .addInterceptor(loggingInterceptor)
             .addInterceptor { chain ->
                 val requestBuilder = chain.request().newBuilder()
@@ -83,23 +83,28 @@ object ApiClient {
         return currentApi!!
     }
 
-    fun getThumbnailUrl(context: Context, mediaId: String): String {
-        val baseUrl = getServerUrl(context).removeSuffix("/")
-        val token = getToken(context)
-        return if (!token.isNullOrEmpty()) {
-            "$baseUrl/api/stream/$mediaId/thumb?token=$token"
+    /**
+     * 将后端返回的相对路径签名 URL（如 /api/stream/{id}?expires=...&sig=...）
+     * 拼接为完整可访问地址。
+     */
+    fun resolveUrl(context: Context, relativePath: String?): String? {
+        if (relativePath.isNullOrBlank()) return null
+        val base = getServerUrl(context).removeSuffix("/")
+        return if (relativePath.startsWith("http://") || relativePath.startsWith("https://")) {
+            relativePath
         } else {
-            "$baseUrl/api/stream/$mediaId/thumb"
+            "$base${if (relativePath.startsWith("/")) relativePath else "/$relativePath"}"
         }
     }
 
-    fun getStreamUrl(context: Context, mediaId: String, streamToken: String? = null): String {
+    /**
+     * 获取媒体的缩略图地址：优先使用后端返回的 24 小时签名 URL；
+     * 若无签名 URL（老数据），回退到 {base}/api/stream/{id}/thumb —— 此时仅
+     * 对访客可见的媒体有效（服务端流接口不解析 query 里的 JWT）。
+     */
+    fun getThumbnailUrl(context: Context, mediaId: String, signedThumbUrl: String? = null): String? {
+        resolveUrl(context, signedThumbUrl)?.let { return it }
         val baseUrl = getServerUrl(context).removeSuffix("/")
-        val token = getToken(context)
-        return when {
-            !streamToken.isNullOrEmpty() -> "$baseUrl/api/stream/$mediaId?token=$streamToken"
-            !token.isNullOrEmpty() -> "$baseUrl/api/stream/$mediaId?token=$token"
-            else -> "$baseUrl/api/stream/$mediaId"
-        }
+        return "$baseUrl/api/stream/$mediaId/thumb"
     }
 }

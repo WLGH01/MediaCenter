@@ -24,8 +24,24 @@ fun ImageViewerScreen(
     onBack: () -> Unit
 ) {
     val context = LocalContext.current
-    val imageUrl = remember(media.id) {
-        ApiClient.getStreamUrl(context, media.id)
+
+    // 优先使用列表/详情接口返回的签名 URL；没有则实时换取
+    var imageUrl by remember(media.id) {
+        mutableStateOf(ApiClient.resolveUrl(context, media.streamUrl))
+    }
+
+    LaunchedEffect(media.id) {
+        if (imageUrl == null) {
+            try {
+                val api = ApiClient.getApi(context)
+                val res = api.getStreamToken(media.id)
+                if (res.isSuccessful) {
+                    imageUrl = ApiClient.resolveUrl(context, res.body()?.streamUrl)
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
     }
 
     Box(
@@ -36,15 +52,19 @@ fun ImageViewerScreen(
             .clickable { onBack() },
         contentAlignment = Alignment.Center
     ) {
-        AsyncImage(
-            model = ImageRequest.Builder(context)
-                .data(imageUrl)
-                .crossfade(true)
-                .build(),
-            contentDescription = media.title ?: media.originalName,
-            contentScale = ContentScale.Fit,
-            modifier = Modifier.fillMaxSize()
-        )
+        if (imageUrl != null) {
+            AsyncImage(
+                model = ImageRequest.Builder(context)
+                    .data(imageUrl)
+                    .crossfade(true)
+                    .build(),
+                contentDescription = media.title ?: media.originalName,
+                contentScale = ContentScale.Fit,
+                modifier = Modifier.fillMaxSize()
+            )
+        } else {
+            Text(text = "图片加载失败", color = Color(0xFFF38BA8), fontSize = 15.sp)
+        }
 
         Text(
             text = media.displayTitle,

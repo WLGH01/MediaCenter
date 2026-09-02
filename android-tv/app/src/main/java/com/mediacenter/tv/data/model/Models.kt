@@ -32,7 +32,12 @@ data class MediaItem(
     val authorName: String? = null,
     val uploaderName: String? = null,
     val author: Author? = null,
-    val tags: List<Tag>? = emptyList()
+    val tags: List<Tag>? = emptyList(),
+    // 后端在列表/详情/收藏夹接口中返回的短时签名 URL（相对路径，需拼接服务器地址）
+    val streamUrl: String? = null,
+    val thumbUrl: String? = null,
+    // 收藏夹接口返回的收藏时间
+    val favoritedAt: String? = null
 ) {
     val displayTitle: String
         get() = title?.ifBlank { null } ?: originalName?.ifBlank { null } ?: "未命名媒体"
@@ -59,7 +64,9 @@ data class AuthorListResponse(
 data class Tag(
     val id: String,
     val name: String,
-    val color: String? = null
+    val altNames: List<String>? = emptyList(),
+    val color: String? = null,
+    val mediaCount: Int? = 0
 )
 
 data class TagListResponse(
@@ -78,18 +85,49 @@ data class MediaListResponse(
     val pagination: Pagination? = null
 )
 
+/**
+ * 后端 GET /api/media/{id}/stream-token 返回的是完整的签名 URL（相对路径）：
+ * { "streamUrl": "/api/stream/{id}?expires=...&uid=...&purpose=stream&role=...&sig=...", "downloadUrl": "..." }
+ */
 data class StreamTokenResponse(
-    val token: String,
-    val expiresAt: String? = null
+    val streamUrl: String? = null,
+    val downloadUrl: String? = null
 )
 
 data class CollectionItem(
     val id: String,
     val name: String,
     val description: String? = null,
-    val mediaCount: Int? = 0
+    val mediaCount: Int? = 0,
+    val createdAt: String? = null,
+    val updatedAt: String? = null
+)
+
+/** 后端 GET /api/collections 返回 { collections: [...] } */
+data class CollectionListResponse(
+    val collections: List<CollectionItem> = emptyList()
 )
 
 data class MediaDetailResponse(
     val media: MediaItem
+)
+
+/** 查询媒体被收藏在哪些收藏夹：GET /api/media/{id}/collections → { collectionIds: [...] } */
+data class MediaCollectionsResponse(
+    val collectionIds: List<String> = emptyList()
+)
+
+/** 添加媒体到收藏夹的请求体：POST /api/collections/{id}/media → { mediaIds: [...] } */
+data class AddToCollectionRequest(
+    val mediaIds: List<String>
+)
+
+/** 创建收藏夹请求体：POST /api/collections → { name, description } */
+data class CreateCollectionRequest(
+    val name: String,
+    val description: String? = null
+)
+
+data class CreateCollectionResponse(
+    val collection: CollectionItem? = null
 )

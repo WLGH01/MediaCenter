@@ -2,9 +2,10 @@ package com.mediacenter.tv.ui.components
 
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -27,10 +28,12 @@ import coil.request.ImageRequest
 import com.mediacenter.tv.data.api.ApiClient
 import com.mediacenter.tv.data.model.MediaItem
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun TvMediaCard(
     media: MediaItem,
     onClick: () -> Unit,
+    onLongClick: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -39,8 +42,8 @@ fun TvMediaCard(
     val scale by animateFloatAsState(targetValue = if (isFocused) 1.06f else 1.0f, label = "scale")
     val borderColor by animateColorAsState(targetValue = if (isFocused) Color(0xFF89B4FA) else Color.Transparent, label = "border")
 
-    val thumbnailUrl = remember(media.id) {
-        ApiClient.getThumbnailUrl(context, media.id)
+    val thumbnailUrl = remember(media.id, media.thumbUrl) {
+        ApiClient.getThumbnailUrl(context, media.id, media.thumbUrl)
     }
 
     Column(
@@ -52,7 +55,7 @@ fun TvMediaCard(
             .border(2.5.dp, borderColor, RoundedCornerShape(14.dp))
             .onFocusChanged { isFocused = it.isFocused }
             .focusable()
-            .clickable { onClick() }
+            .combinedClickable(onClick = onClick, onLongClick = onLongClick)
     ) {
         Box(
             modifier = Modifier
