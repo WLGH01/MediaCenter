@@ -191,6 +191,16 @@ fun HomeScreen(
                     )
                 }
             }
+
+            // 操作提示（仅提示，不可聚焦）
+            item {
+                Text(
+                    text = "OK 查看详情 · 长按 OK 收藏",
+                    color = Color(0x996C7086),
+                    fontSize = 12.sp,
+                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 8.dp)
+                )
+            }
         }
 
         // 内容展示区

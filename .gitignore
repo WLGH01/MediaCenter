@@ -47,3 +47,6 @@ logs/
 Desktop.ini
 ehthumbs.db
 .data/
+
+# === AI 助手工作目录 ===
+.workbuddy/

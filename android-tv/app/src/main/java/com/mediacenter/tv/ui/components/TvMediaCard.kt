@@ -16,6 +16,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
@@ -40,7 +41,10 @@ fun TvMediaCard(
     var isFocused by remember { mutableStateOf(false) }
 
     val scale by animateFloatAsState(targetValue = if (isFocused) 1.06f else 1.0f, label = "scale")
-    val borderColor by animateColorAsState(targetValue = if (isFocused) Color(0xFF89B4FA) else Color.Transparent, label = "border")
+    val borderColor by animateColorAsState(
+        targetValue = if (isFocused) Color(0xFF89B4FA) else Color.Transparent,
+        label = "border"
+    )
 
     val thumbnailUrl = remember(media.id, media.thumbUrl) {
         ApiClient.getThumbnailUrl(context, media.id, media.thumbUrl)
@@ -49,19 +53,23 @@ fun TvMediaCard(
     Column(
         modifier = modifier
             .scale(scale)
-            .width(200.dp)
+            .width(210.dp)
             .clip(RoundedCornerShape(14.dp))
             .background(if (isFocused) Color(0xFF313244) else Color(0xFF1E1E2E))
-            .border(2.5.dp, borderColor, RoundedCornerShape(14.dp))
+            .border(
+                width = if (isFocused) 2.5.dp else 1.dp,
+                color = if (isFocused) borderColor else Color(0x14FFFFFF),
+                shape = RoundedCornerShape(14.dp)
+            )
             .onFocusChanged { isFocused = it.isFocused }
             .focusable()
             .combinedClickable(onClick = onClick, onLongClick = onLongClick)
     ) {
+        // ===== 封面区 =====
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(125.dp)
-                .background(Color(0xFF181825))
+                .height(130.dp)
         ) {
             AsyncImage(
                 model = ImageRequest.Builder(context)
@@ -73,82 +81,114 @@ fun TvMediaCard(
                 modifier = Modifier.fillMaxSize()
             )
 
-            // 类型标签 (Video/Audio/Image)
+            // 底部渐变（为时长/标签提供可读性）
+            Box(
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .fillMaxWidth()
+                    .height(44.dp)
+                    .background(
+                        Brush.verticalGradient(
+                            0f to Color.Transparent,
+                            1f to Color(0x99000000)
+                        )
+                    )
+            )
+
+            // 类型角标 (左上)
             Text(
-                text = media.mediaType.uppercase(),
+                text = when (media.mediaType) {
+                    "video" -> "视频"
+                    "audio" -> "音频"
+                    else -> "图片"
+                },
                 color = Color.White,
                 fontSize = 10.sp,
                 fontWeight = FontWeight.Bold,
                 modifier = Modifier
-                    .align(Alignment.TopEnd)
+                    .align(Alignment.TopStart)
                     .padding(6.dp)
                     .background(
                         color = when (media.mediaType) {
-                            "video" -> Color(0xE6E53935)
-                            "audio" -> Color(0xE643A047)
-                            else -> Color(0xE61E88E5)
+                            "video" -> Color(0xD9E53935)
+                            "audio" -> Color(0xD943A047)
+                            else -> Color(0xD91E88E5)
                         },
                         shape = RoundedCornerShape(4.dp)
                     )
                     .padding(horizontal = 6.dp, vertical = 2.dp)
             )
 
-            // 视频时长显示
-            if (media.mediaType == "video" && media.duration != null) {
+            // 时长角标 (右下)
+            if (media.mediaType != "image" && media.duration != null) {
                 val durationSec = media.duration.toInt()
-                val min = durationSec / 60
-                val sec = durationSec % 60
-                val timeStr = String.format("%d:%02d", min, sec)
+                val h = durationSec / 3600
+                val m = (durationSec % 3600) / 60
+                val s = durationSec % 60
+                val timeStr = if (h > 0) "%d:%02d:%02d".format(h, m, s) else "%d:%02d".format(m, s)
 
                 Text(
                     text = timeStr,
                     color = Color.White,
                     fontSize = 11.sp,
+                    fontWeight = FontWeight.Medium,
                     modifier = Modifier
                         .align(Alignment.BottomEnd)
                         .padding(6.dp)
-                        .background(Color(0xCC000000), shape = RoundedCornerShape(4.dp))
-                        .padding(horizontal = 4.dp, vertical = 1.dp)
+                        .background(Color(0xB3000000), shape = RoundedCornerShape(4.dp))
+                        .padding(horizontal = 5.dp, vertical = 2.dp)
                 )
+            }
+
+            // 标签预览 (左下，最多 2 个)
+            val previewTags = media.tags?.take(2)
+            if (!previewTags.isNullOrEmpty()) {
+                Row(
+                    modifier = Modifier
+                        .align(Alignment.BottomStart)
+                        .padding(6.dp),
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    previewTags.forEach { tag ->
+                        Text(
+                            text = "#${tag.name}",
+                            color = Color(0xFFCDD6F4),
+                            fontSize = 10.sp,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier
+                                .background(Color(0x6689B4FA), RoundedCornerShape(4.dp))
+                                .padding(horizontal = 5.dp, vertical = 1.dp)
+                        )
+                    }
+                }
             }
         }
 
-        // 标题信息
+        // ===== 信息区 =====
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(8.dp)
+                .padding(horizontal = 10.dp, vertical = 8.dp)
         ) {
             Text(
                 text = media.displayTitle,
                 color = if (isFocused) Color.White else Color(0xFFCDD6F4),
                 fontSize = 13.sp,
-                fontWeight = if (isFocused) FontWeight.Bold else FontWeight.Normal,
+                fontWeight = if (isFocused) FontWeight.Bold else FontWeight.Medium,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
 
-            media.author?.let { author ->
+            (media.displayAuthorName ?: media.uploaderName)?.let { name ->
                 Text(
-                    text = author.name,
+                    text = name,
                     color = Color(0xFFA6ADC8),
                     fontSize = 11.sp,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.padding(top = 2.dp)
                 )
-            } ?: run {
-                val fallbackAuthor = media.authorName ?: media.uploaderName
-                fallbackAuthor?.let { name ->
-                    Text(
-                        text = name,
-                        color = Color(0xFFA6ADC8),
-                        fontSize = 11.sp,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.padding(top = 2.dp)
-                    )
-                }
             }
         }
     }

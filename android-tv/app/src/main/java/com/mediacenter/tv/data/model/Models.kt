@@ -22,6 +22,7 @@ data class MediaItem(
     val id: String,
     val title: String? = null,
     val originalName: String? = null,
+    val description: String? = null,
     val fileSize: Long? = 0L,
     val duration: Double? = null,
     val width: Int? = null,
@@ -29,6 +30,7 @@ data class MediaItem(
     val mimeType: String? = null,
     val visibility: String? = null,
     val createdAt: String? = null,
+    val authorId: String? = null,
     val authorName: String? = null,
     val uploaderName: String? = null,
     val author: Author? = null,
@@ -49,6 +51,13 @@ data class MediaItem(
             mimeType?.startsWith("image/") == true -> "image"
             else -> "video"
         }
+
+    /** 展示用作者信息（详情接口返回 author 对象，列表接口返回平铺字段） */
+    val displayAuthorName: String?
+        get() = author?.name ?: authorName
+
+    val displayAuthorId: String?
+        get() = author?.id ?: authorId
 }
 
 data class Author(
