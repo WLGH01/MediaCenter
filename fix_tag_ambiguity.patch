@@ -1,0 +1,33 @@
+From ab9844ea7e369aef2801a1ac56e825b182bd2f19 Mon Sep 17 00:00:00 2001
+From: WLGH01 <113486817+WLGH01@users.noreply.github.com>
+Date: Thu, 3 Sep 2026 00:51:48 +0800
+Subject: [PATCH] fix(android-tv): resolve Tag class ambiguity with explicit
+ model imports in MediaCenterApi.kt
+
+---
+ .../java/com/mediacenter/tv/data/api/MediaCenterApi.kt | 10 +++++++++-
+ 1 file changed, 9 insertions(+), 1 deletion(-)
+
+diff --git a/android-tv/app/src/main/java/com/mediacenter/tv/data/api/MediaCenterApi.kt b/android-tv/app/src/main/java/com/mediacenter/tv/data/api/MediaCenterApi.kt
+index 0661736..71a6ecd 100644
+--- a/android-tv/app/src/main/java/com/mediacenter/tv/data/api/MediaCenterApi.kt
++++ b/android-tv/app/src/main/java/com/mediacenter/tv/data/api/MediaCenterApi.kt
+@@ -1,6 +1,14 @@
+ package com.mediacenter.tv.data.api
+ 
+-import com.mediacenter.tv.data.model.*
++import com.mediacenter.tv.data.model.Author
++import com.mediacenter.tv.data.model.CollectionItem
++import com.mediacenter.tv.data.model.LoginRequest
++import com.mediacenter.tv.data.model.LoginResponse
++import com.mediacenter.tv.data.model.MediaDetailResponse
++import com.mediacenter.tv.data.model.MediaItem
++import com.mediacenter.tv.data.model.MediaListResponse
++import com.mediacenter.tv.data.model.StreamTokenResponse
++import com.mediacenter.tv.data.model.Tag
+ import retrofit2.Response
+ import retrofit2.http.*
+ 
+-- 
+2.53.0.windows.1
+

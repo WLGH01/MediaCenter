@@ -52,10 +52,18 @@ data class Author(
     val avatarUrl: String? = null
 )
 
+data class AuthorListResponse(
+    val authors: List<Author> = emptyList()
+)
+
 data class Tag(
     val id: String,
     val name: String,
     val color: String? = null
+)
+
+data class TagListResponse(
+    val tags: List<Tag> = emptyList()
 )
 
 data class Pagination(

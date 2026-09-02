@@ -55,10 +55,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             try {
                 val api = ApiClient.getApi(getApplication())
                 val authorRes = api.getAuthors()
-                if (authorRes.isSuccessful) authors.value = authorRes.body() ?: emptyList()
+                if (authorRes.isSuccessful) authors.value = authorRes.body()?.authors ?: emptyList()
 
                 val tagRes = api.getTags()
-                if (tagRes.isSuccessful) tags.value = tagRes.body() ?: emptyList()
+                if (tagRes.isSuccessful) tags.value = tagRes.body()?.tags ?: emptyList()
 
                 if (_isLoggedIn.value) {
                     val collRes = api.getCollections()

@@ -95,10 +95,11 @@ object ApiClient {
 
     fun getStreamUrl(context: Context, mediaId: String, streamToken: String? = null): String {
         val baseUrl = getServerUrl(context).removeSuffix("/")
-        return if (!streamToken.isNullOrEmpty()) {
-            "$baseUrl/api/stream/$mediaId?token=$streamToken"
-        } else {
-            "$baseUrl/api/stream/$mediaId"
+        val token = getToken(context)
+        return when {
+            !streamToken.isNullOrEmpty() -> "$baseUrl/api/stream/$mediaId?token=$streamToken"
+            !token.isNullOrEmpty() -> "$baseUrl/api/stream/$mediaId?token=$token"
+            else -> "$baseUrl/api/stream/$mediaId"
         }
     }
 }

@@ -1,6 +1,7 @@
 package com.mediacenter.tv.data.api
 
 import com.mediacenter.tv.data.model.Author
+import com.mediacenter.tv.data.model.AuthorListResponse
 import com.mediacenter.tv.data.model.CollectionItem
 import com.mediacenter.tv.data.model.LoginRequest
 import com.mediacenter.tv.data.model.LoginResponse
@@ -9,6 +10,7 @@ import com.mediacenter.tv.data.model.MediaItem
 import com.mediacenter.tv.data.model.MediaListResponse
 import com.mediacenter.tv.data.model.StreamTokenResponse
 import com.mediacenter.tv.data.model.Tag
+import com.mediacenter.tv.data.model.TagListResponse
 import retrofit2.Response
 import retrofit2.http.*
 
@@ -42,10 +44,10 @@ interface MediaCenterApi {
     ): Response<StreamTokenResponse>
 
     @GET("api/authors")
-    suspend fun getAuthors(): Response<List<Author>>
+    suspend fun getAuthors(): Response<AuthorListResponse>
 
     @GET("api/tags")
-    suspend fun getTags(): Response<List<Tag>>
+    suspend fun getTags(): Response<TagListResponse>
 
     @GET("api/collections")
     suspend fun getCollections(): Response<List<CollectionItem>>

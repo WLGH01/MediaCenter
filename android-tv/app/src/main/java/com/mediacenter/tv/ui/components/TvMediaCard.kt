@@ -125,16 +125,27 @@ fun TvMediaCard(
                 overflow = TextOverflow.Ellipsis
             )
 
-            val authorDisplay = media.author?.name ?: media.authorName ?: media.uploaderName
-            authorDisplay?.let { name ->
+            media.author?.let { author ->
                 Text(
-                    text = name,
+                    text = author.name,
                     color = Color(0xFFA6ADC8),
                     fontSize = 11.sp,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.padding(top = 2.dp)
                 )
+            } ?: run {
+                val fallbackAuthor = media.authorName ?: media.uploaderName
+                fallbackAuthor?.let { name ->
+                    Text(
+                        text = name,
+                        color = Color(0xFFA6ADC8),
+                        fontSize = 11.sp,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.padding(top = 2.dp)
+                    )
+                }
             }
         }
     }
