@@ -132,9 +132,9 @@ fun VideoPlayerScreen(
         DisposableEffect(exoPlayer) {
             val listener = object : Player.Listener {
                 override fun onPlayerError(error: PlaybackException) {
-                    loadError = when {
-                        error.errorCode == PlaybackException.ERROR_CODE_IO_BAD_HTTP_STATUS ||
-                            error.errorCode == PlaybackException.ERROR_CODE_IO_FORBIDDEN_REQUEST ->
+                    loadError = when (error.errorCode) {
+                        // Media3 将所有非 2xx HTTP 状态（401/403/404 等）归为 BAD_HTTP_STATUS
+                        PlaybackException.ERROR_CODE_IO_BAD_HTTP_STATUS ->
                             "播放被拒绝（鉴权失败或签名过期），请重试"
                         else -> "播放失败: ${error.localizedMessage ?: error.errorCodeName}"
                     }
