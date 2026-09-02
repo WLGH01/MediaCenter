@@ -1,5 +1,5 @@
 import type { Request, Response } from 'express';
-import { eq, and, desc, count, ilike, inArray, notInArray, isNull, or, sql, type SQL } from 'drizzle-orm';
+import { eq, and, asc, desc, count, ilike, inArray, notInArray, isNull, or, sql, type SQL } from 'drizzle-orm';
 import { isUuid, uuidv4 } from '../utils/uuid';
 import { getDatabase, schema } from '../db/index';
 import { isString, isArray } from '../utils/env';
