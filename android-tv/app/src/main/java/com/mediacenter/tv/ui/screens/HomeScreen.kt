@@ -18,7 +18,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -41,10 +40,15 @@ fun HomeScreen(
     val collections by viewModel.collections.collectAsState()
 
     val selectedAuthorId by viewModel.selectedAuthorId.collectAsState()
-    val selectedTag by viewModel.selectedTag.collectAsState()
+    val selectedTags by viewModel.selectedTags.collectAsState()
     val selectedCollectionId by viewModel.selectedCollectionId.collectAsState()
     val sortBy by viewModel.sortBy.collectAsState()
     val sortOrder by viewModel.sortOrder.collectAsState()
+    val isLoggedIn by viewModel.isLoggedIn.collectAsState()
+
+    // 对话框状态
+    var showTagPicker by remember { mutableStateOf(false) }
+    var collectionTarget by remember { mutableStateOf<MediaItem?>(null) }
 
     Column(
         modifier = Modifier
@@ -111,7 +115,7 @@ fun HomeScreen(
             }
         }
 
-        // 次级长条横向选择器 (排序 / 收藏库 / 作者 / 标签)
+        // 次级长条横向选择器 (排序 / 标签 / 收藏库 / 作者)
         LazyRow(
             horizontalArrangement = Arrangement.spacedBy(10.dp),
             modifier = Modifier
@@ -134,13 +138,41 @@ fun HomeScreen(
                 )
             }
 
+            // 标签筛选入口（打开选择对话框）
+            item {
+                val tagText = when {
+                    selectedTags.isEmpty() -> "🏷 标签筛选"
+                    selectedTags.size == 1 -> "🏷 ${selectedTags.first()}"
+                    else -> "🏷 ${selectedTags.size} 个标签"
+                }
+                FilterChip(
+                    title = tagText,
+                    isSelected = selectedTags.isNotEmpty(),
+                    onClick = { showTagPicker = true }
+                )
+            }
+
+            // 已选标签快捷移除
+            items(selectedTags.sorted(), key = { "sel_tag_$it" }) { tagName ->
+                FilterChip(
+                    title = "✕ #$tagName",
+                    isSelected = false,
+                    activeColor = Color(0xFFF38BA8),
+                    onClick = { viewModel.toggleTag(tagName) }
+                )
+            }
+
             // 收藏夹
-            if (collections.isNotEmpty()) {
+            if (isLoggedIn && collections.isNotEmpty()) {
                 items(collections, key = { "coll_${it.id}" }) { coll ->
                     FilterChip(
-                        title = "⭐ ${coll.name}",
+                        title = "⭐ ${coll.name} (${coll.mediaCount ?: 0})",
                         isSelected = selectedCollectionId == coll.id,
-                        onClick = { viewModel.setFilterCollection(if (selectedCollectionId == coll.id) null else coll.id) }
+                        onClick = {
+                            viewModel.setFilterCollection(
+                                if (selectedCollectionId == coll.id) null else coll.id
+                            )
+                        }
                     )
                 }
             }
@@ -151,18 +183,11 @@ fun HomeScreen(
                     FilterChip(
                         title = "👤 ${author.name}",
                         isSelected = selectedAuthorId == author.id,
-                        onClick = { viewModel.setFilterAuthor(if (selectedAuthorId == author.id) null else author.id) }
-                    )
-                }
-            }
-
-            // 标签筛选
-            if (tags.isNotEmpty()) {
-                items(tags, key = { "tag_${it.id}" }) { tag ->
-                    FilterChip(
-                        title = "#${tag.name}",
-                        isSelected = selectedTag == tag.name,
-                        onClick = { viewModel.setFilterTag(if (selectedTag == tag.name) null else tag.name) }
+                        onClick = {
+                            viewModel.setFilterAuthor(
+                                if (selectedAuthorId == author.id) null else author.id
+                            )
+                        }
                     )
                 }
             }
@@ -213,13 +238,33 @@ fun HomeScreen(
                         items(state.items, key = { it.id }) { item ->
                             TvMediaCard(
                                 media = item,
-                                onClick = { onMediaSelect(item) }
+                                onClick = { onMediaSelect(item) },
+                                onLongClick = {
+                                    if (isLoggedIn) collectionTarget = item
+                                }
                             )
                         }
                     }
                 }
             }
         }
+    }
+
+    // 标签选择对话框
+    if (showTagPicker) {
+        TagPickerDialog(
+            viewModel = viewModel,
+            onDismiss = { showTagPicker = false }
+        )
+    }
+
+    // 收藏管理对话框（长按媒体卡片打开）
+    collectionTarget?.let { target ->
+        CollectionDialog(
+            media = target,
+            viewModel = viewModel,
+            onDismiss = { collectionTarget = null }
+        )
     }
 }
 
