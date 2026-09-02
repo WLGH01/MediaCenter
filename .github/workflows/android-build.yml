@@ -1,7 +1,13 @@
 name: Build Android TV APK
 
 on:
-  workflow_dispatch: # 仅支持在 GitHub Actions 页面手动点击触发
+  workflow_dispatch: # 手动触发
+  push:
+    branches:
+      - main
+    paths:
+      - 'android-tv/**'
+      - '.github/workflows/android-build.yml'
 
 jobs:
   build-apk:
@@ -17,16 +23,23 @@ jobs:
         with:
           java-version: '17'
           distribution: 'temurin'
-          cache: 'gradle'
 
-      - name: Build Debug APK with Gradle
+      # 仓库内的 gradlew 只是转发到系统 gradle 的占位脚本（无 wrapper jar），
+      # 构建必须使用与 AGP 8.8.0 匹配的固定 Gradle 版本（>= 8.10.2）
+      - name: Set up Gradle 8.10.2
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.10.2'
+          cache-read-only: false
+
+      - name: Build Debug APK
         run: |
           cd android-tv
-          chmod +x gradlew || true
           gradle assembleDebug --no-daemon --stacktrace
 
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
         with:
           name: MediaCenter-TV-debug
-          path: android-tv/app/build/outputs/apk/debug/app-debug.apk
+          path: android-tv/app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
