@@ -131,8 +131,9 @@ fun MediaDetailScreen(
                         contentScale = ContentScale.Crop,
                         modifier = Modifier.fillMaxSize()
                     )
-                    // 底部渐变 + 时长
-                    if (detail.mediaType != "image" && detail.duration != null) {
+                    // 底部渐变 + 时长（先拷贝到局部变量，委托属性无法智能转换）
+                    val posterDuration = detail.duration
+                    if (detail.mediaType != "image" && posterDuration != null) {
                         Box(
                             modifier = Modifier
                                 .align(Alignment.BottomStart)
@@ -146,7 +147,7 @@ fun MediaDetailScreen(
                                 .padding(horizontal = 10.dp, vertical = 6.dp)
                         ) {
                             Text(
-                                text = formatDuration(detail.duration),
+                                text = formatDuration(posterDuration),
                                 color = Color.White,
                                 fontSize = 13.sp,
                                 fontWeight = FontWeight.Medium
@@ -228,14 +229,15 @@ fun MediaDetailScreen(
                     }
                 }
 
-                // 标签（可跳转筛选）
-                if (!detail.tags.isNullOrEmpty()) {
+                // 标签（可跳转筛选）——委托属性无法智能转换，先拷贝到局部变量
+                val mediaTags = detail.tags.orEmpty()
+                if (mediaTags.isNotEmpty()) {
                     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         Text("标签", color = Color(0xFF6C7086), fontSize = 13.sp)
                         Row(
                             horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
-                            detail.tags.forEach { tag ->
+                            mediaTags.forEach { tag ->
                                 DetailChip(text = "# ${tag.name}") {
                                     onFilterByTag(tag.name)
                                 }

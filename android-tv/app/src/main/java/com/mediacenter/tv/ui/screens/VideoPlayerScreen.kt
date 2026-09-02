@@ -1,13 +1,13 @@
 package com.mediacenter.tv.ui.screens
 
 import android.net.Uri
-import android.view.KeyEvent
 import androidx.annotation.OptIn
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.background
+import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -18,7 +18,6 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.focus.focusable
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.key.*
@@ -212,19 +211,18 @@ fun VideoPlayerScreen(
                 .focusable()
                 .onPreviewKeyEvent { keyEvent ->
                     if (keyEvent.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
-                    when (keyEvent.keyCode) {
-                        KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.KEYCODE_MEDIA_REWIND -> {
+                    when (keyEvent.key) {
+                        Key.DirectionLeft, Key.MediaRewind -> {
                             seekBy(-SEEK_STEP_MS); markInteraction(); true
                         }
-                        KeyEvent.KEYCODE_DPAD_RIGHT, KeyEvent.KEYCODE_MEDIA_FAST_FORWARD -> {
+                        Key.DirectionRight, Key.MediaFastForward -> {
                             seekBy(SEEK_STEP_MS); markInteraction(); true
                         }
-                        KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER,
-                        KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE -> {
+                        Key.DirectionCenter, Key.Enter, Key.MediaPlayPause -> {
                             if (controlsVisible) togglePlayPause() else markInteraction()
                             true
                         }
-                        KeyEvent.KEYCODE_DPAD_UP, KeyEvent.KEYCODE_DPAD_DOWN -> {
+                        Key.DirectionUp, Key.DirectionDown -> {
                             markInteraction(); true
                         }
                         else -> false
