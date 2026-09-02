@@ -87,9 +87,9 @@ object ApiClient {
         val baseUrl = getServerUrl(context).removeSuffix("/")
         val token = getToken(context)
         return if (!token.isNullOrEmpty()) {
-            "$baseUrl/api/media/$mediaId/thumbnail?token=$token"
+            "$baseUrl/api/stream/$mediaId/thumb?token=$token"
         } else {
-            "$baseUrl/api/media/$mediaId/thumbnail"
+            "$baseUrl/api/stream/$mediaId/thumb"
         }
     }
 

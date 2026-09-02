@@ -14,20 +14,48 @@ interface MediaCenterApi {
     @GET("api/media")
     suspend fun getMediaList(
         @Query("page") page: Int = 1,
-        @Query("limit") limit: Int = 30,
+        @Query("limit") limit: Int = 40,
         @Query("type") type: String? = null,
         @Query("search") search: String? = null,
-        @Query("sort") sort: String = "createdAt",
-        @Query("order") order: String = "desc"
+        @Query("authorId") authorId: String? = null,
+        @Query("tags") tags: String? = null,
+        @Query("sortBy") sortBy: String = "createdAt",
+        @Query("sortOrder") sortOrder: String = "desc"
     ): Response<MediaListResponse>
 
     @GET("api/media/{id}")
     suspend fun getMediaDetail(
         @Path("id") id: String
-    ): Response<MediaItem>
+    ): Response<MediaDetailResponse>
 
-    @GET("api/stream/{id}/token")
+    @GET("api/media/{id}/stream-token")
     suspend fun getStreamToken(
         @Path("id") id: String
     ): Response<StreamTokenResponse>
+
+    @GET("api/authors")
+    suspend fun getAuthors(): Response<List<Author>>
+
+    @GET("api/tags")
+    suspend fun getTags(): Response<List<Tag>>
+
+    @GET("api/collections")
+    suspend fun getCollections(): Response<List<CollectionItem>>
+
+    @GET("api/collections/{id}/media")
+    suspend fun getCollectionMedia(
+        @Path("id") id: String
+    ): Response<List<MediaItem>>
+
+    @POST("api/collections/{id}/media")
+    suspend fun addMediaToCollection(
+        @Path("id") id: String,
+        @Body body: Map<String, String>
+    ): Response<Unit>
+
+    @DELETE("api/collections/{id}/media/{mediaId}")
+    suspend fun removeMediaFromCollection(
+        @Path("id") id: String,
+        @Path("mediaId") mediaId: String
+    ): Response<Unit>
 }

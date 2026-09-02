@@ -1,0 +1,1597 @@
+From 5d9d1a3740ec3a41c7455dfff5134f929616d266 Mon Sep 17 00:00:00 2001
+From: Antigravity <antigravity@example.com>
+Date: Wed, 2 Sep 2026 16:39:55 +0000
+Subject: [PATCH] feat(android-tv): add user login, handle null safety for API
+ response, and redesign UI for TV
+
+---
+ .../java/com/mediacenter/tv/MainActivity.kt   |   2 +-
+ .../com/mediacenter/tv/data/model/Models.kt   |  54 +++--
+ .../tv/ui/components/TvMediaCard.kt           |  27 +--
+ .../mediacenter/tv/ui/screens/HomeScreen.kt   |  15 +-
+ .../tv/ui/screens/ImageViewerScreen.kt        |   2 +-
+ .../tv/ui/screens/SettingsScreen.kt           | 153 +++++++++++--
+ .../tv/ui/screens/VideoPlayerScreen.kt        |   2 +-
+ .../tv/ui/viewmodel/MainViewModel.kt          |  33 ++-
+ fix_null_and_login_ui.patch                   |  27 +++
+ graphflow-out/graphflow-graph.json            | 209 ++++++++++++++++++
+ graphflow-out/graphflow-graph.sqlite          | Bin 0 -> 163840 bytes
+ 11 files changed, 464 insertions(+), 60 deletions(-)
+ create mode 100644 fix_null_and_login_ui.patch
+ create mode 100644 graphflow-out/graphflow-graph.json
+ create mode 100644 graphflow-out/graphflow-graph.sqlite
+
+diff --git a/android-tv/app/src/main/java/com/mediacenter/tv/MainActivity.kt b/android-tv/app/src/main/java/com/mediacenter/tv/MainActivity.kt
+index 07a71ce..ab4fb9a 100644
+--- a/android-tv/app/src/main/java/com/mediacenter/tv/MainActivity.kt
++++ b/android-tv/app/src/main/java/com/mediacenter/tv/MainActivity.kt
+@@ -62,7 +62,7 @@ class MainActivity : ComponentActivity() {
+                         )
+                     }
+                     is Screen.Player -> {
+-                        when (screen.media.type) {
++                        when (screen.media.mediaType) {
+                             "video", "audio" -> {
+                                 VideoPlayerScreen(
+                                     media = screen.media,
+diff --git a/android-tv/app/src/main/java/com/mediacenter/tv/data/model/Models.kt b/android-tv/app/src/main/java/com/mediacenter/tv/data/model/Models.kt
+index 3ac18cb..778ac0d 100644
+--- a/android-tv/app/src/main/java/com/mediacenter/tv/data/model/Models.kt
++++ b/android-tv/app/src/main/java/com/mediacenter/tv/data/model/Models.kt
+@@ -20,38 +20,54 @@ data class LoginResponse(
+ 
+ data class MediaItem(
+     val id: String,
+-    val title: String?,
+-    val originalName: String,
+-    val type: String, // "video", "audio", "image"
+-    val size: Long,
+-    val duration: Double?,
+-    val width: Int?,
+-    val height: Int?,
+-    val mimeType: String,
+-    val visibility: String,
+-    val createdAt: String,
+-    val author: Author?,
++    val title: String? = null,
++    val originalName: String? = null,
++    val fileSize: Long? = 0L,
++    val duration: Double? = null,
++    val width: Int? = null,
++    val height: Int? = null,
++    val mimeType: String? = null,
++    val visibility: String? = null,
++    val createdAt: String? = null,
++    val authorName: String? = null,
++    val uploaderName: String? = null,
++    val author: Author? = null,
+     val tags: List<Tag>? = emptyList()
+-)
++) {
++    val displayTitle: String
++        get() = title?.ifBlank { null } ?: originalName?.ifBlank { null } ?: "未命名媒体"
++
++    val mediaType: String
++        get() = when {
++            mimeType?.startsWith("video/") == true -> "video"
++            mimeType?.startsWith("audio/") == true -> "audio"
++            mimeType?.startsWith("image/") == true -> "image"
++            else -> "video"
++        }
++}
+ 
+ data class Author(
+     val id: String,
+     val name: String,
+-    val avatarUrl: String?
++    val avatarUrl: String? = null
+ )
+ 
+ data class Tag(
+     val id: String,
+     val name: String,
+-    val color: String?
++    val color: String? = null
++)
++
++data class Pagination(
++    val page: Int = 1,
++    val limit: Int = 20,
++    val total: Long = 0L,
++    val totalPages: Int = 1
+ )
+ 
+ data class MediaListResponse(
+-    val items: List<MediaItem>,
+-    val total: Long,
+-    val page: Int,
+-    val limit: Int,
+-    val totalPages: Int
++    val items: List<MediaItem> = emptyList(),
++    val pagination: Pagination? = null
+ )
+ 
+ data class StreamTokenResponse(
+diff --git a/android-tv/app/src/main/java/com/mediacenter/tv/ui/components/TvMediaCard.kt b/android-tv/app/src/main/java/com/mediacenter/tv/ui/components/TvMediaCard.kt
+index f69e10c..eb87ee6 100644
+--- a/android-tv/app/src/main/java/com/mediacenter/tv/ui/components/TvMediaCard.kt
++++ b/android-tv/app/src/main/java/com/mediacenter/tv/ui/components/TvMediaCard.kt
+@@ -36,8 +36,8 @@ fun TvMediaCard(
+     val context = LocalContext.current
+     var isFocused by remember { mutableStateOf(false) }
+ 
+-    val scale by animateFloatAsState(targetValue = if (isFocused) 1.08f else 1.0f, label = "scale")
+-    val borderColor by animateColorAsState(targetValue = if (isFocused) Color(0xFF6466F1) else Color.Transparent, label = "border")
++    val scale by animateFloatAsState(targetValue = if (isFocused) 1.06f else 1.0f, label = "scale")
++    val borderColor by animateColorAsState(targetValue = if (isFocused) Color(0xFF89B4FA) else Color.Transparent, label = "border")
+ 
+     val thumbnailUrl = remember(media.id) {
+         ApiClient.getThumbnailUrl(context, media.id)
+@@ -46,10 +46,10 @@ fun TvMediaCard(
+     Column(
+         modifier = modifier
+             .scale(scale)
+-            .width(180.dp)
+-            .clip(RoundedCornerShape(12.dp))
+-            .background(Color(0xFF1E1E2E))
+-            .border(2.dp, borderColor, RoundedCornerShape(12.dp))
++            .width(200.dp)
++            .clip(RoundedCornerShape(14.dp))
++            .background(if (isFocused) Color(0xFF313244) else Color(0xFF1E1E2E))
++            .border(2.5.dp, borderColor, RoundedCornerShape(14.dp))
+             .onFocusChanged { isFocused = it.isFocused }
+             .focusable()
+             .clickable { onClick() }
+@@ -57,7 +57,7 @@ fun TvMediaCard(
+         Box(
+             modifier = Modifier
+                 .fillMaxWidth()
+-                .height(110.dp)
++                .height(125.dp)
+                 .background(Color(0xFF181825))
+         ) {
+             AsyncImage(
+@@ -72,7 +72,7 @@ fun TvMediaCard(
+ 
+             // 类型标签 (Video/Audio/Image)
+             Text(
+-                text = media.type.uppercase(),
++                text = media.mediaType.uppercase(),
+                 color = Color.White,
+                 fontSize = 10.sp,
+                 fontWeight = FontWeight.Bold,
+@@ -80,7 +80,7 @@ fun TvMediaCard(
+                     .align(Alignment.TopEnd)
+                     .padding(6.dp)
+                     .background(
+-                        color = when (media.type) {
++                        color = when (media.mediaType) {
+                             "video" -> Color(0xE6E53935)
+                             "audio" -> Color(0xE643A047)
+                             else -> Color(0xE61E88E5)
+@@ -91,7 +91,7 @@ fun TvMediaCard(
+             )
+ 
+             // 视频时长显示
+-            if (media.type == "video" && media.duration != null) {
++            if (media.mediaType == "video" && media.duration != null) {
+                 val durationSec = media.duration.toInt()
+                 val min = durationSec / 60
+                 val sec = durationSec % 60
+@@ -117,7 +117,7 @@ fun TvMediaCard(
+                 .padding(8.dp)
+         ) {
+             Text(
+-                text = media.title ?: media.originalName,
++                text = media.displayTitle,
+                 color = if (isFocused) Color.White else Color(0xFFCDD6F4),
+                 fontSize = 13.sp,
+                 fontWeight = if (isFocused) FontWeight.Bold else FontWeight.Normal,
+@@ -125,9 +125,10 @@ fun TvMediaCard(
+                 overflow = TextOverflow.Ellipsis
+             )
+ 
+-            media.author?.let { author ->
++            val authorDisplay = media.author?.name ?: media.authorName ?: media.uploaderName
++            authorDisplay?.let { name ->
+                 Text(
+-                    text = author.name,
++                    text = name,
+                     color = Color(0xFFA6ADC8),
+                     fontSize = 11.sp,
+                     maxLines = 1,
+diff --git a/android-tv/app/src/main/java/com/mediacenter/tv/ui/screens/HomeScreen.kt b/android-tv/app/src/main/java/com/mediacenter/tv/ui/screens/HomeScreen.kt
+index a44ee3c..c11106a 100644
+--- a/android-tv/app/src/main/java/com/mediacenter/tv/ui/screens/HomeScreen.kt
++++ b/android-tv/app/src/main/java/com/mediacenter/tv/ui/screens/HomeScreen.kt
+@@ -94,7 +94,7 @@ fun HomeScreen(
+                     modifier = Modifier.fillMaxSize(),
+                     contentAlignment = Alignment.Center
+                 ) {
+-                    CircularProgressIndicator(color = Color(0xFF6466F1))
++                    CircularProgressIndicator(color = Color(0xFF89B4FA))
+                 }
+             }
+             is MediaUiState.Error -> {
+@@ -105,8 +105,11 @@ fun HomeScreen(
+                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                         Text(text = state.message, color = Color(0xFFF38BA8), fontSize = 16.sp)
+                         Spacer(modifier = Modifier.height(16.dp))
+-                        Button(onClick = { viewModel.refresh() }) {
+-                            Text("重试")
++                        Button(
++                            onClick = { viewModel.refresh() },
++                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF313244))
++                        ) {
++                            Text("重试", color = Color.White)
+                         }
+                     }
+                 }
+@@ -121,9 +124,9 @@ fun HomeScreen(
+                     }
+                 } else {
+                     LazyVerticalGrid(
+-                        columns = GridCells.Adaptive(minSize = 170.dp),
+-                        horizontalArrangement = Arrangement.spacedBy(20.dp),
+-                        verticalArrangement = Arrangement.spacedBy(24.dp),
++                        columns = GridCells.Adaptive(minSize = 190.dp),
++                        horizontalArrangement = Arrangement.spacedBy(24.dp),
++                        verticalArrangement = Arrangement.spacedBy(28.dp),
+                         modifier = Modifier.fillMaxSize()
+                     ) {
+                         items(state.items, key = { it.id }) { item ->
+diff --git a/android-tv/app/src/main/java/com/mediacenter/tv/ui/screens/ImageViewerScreen.kt b/android-tv/app/src/main/java/com/mediacenter/tv/ui/screens/ImageViewerScreen.kt
+index 57f90be..d2da2d2 100644
+--- a/android-tv/app/src/main/java/com/mediacenter/tv/ui/screens/ImageViewerScreen.kt
++++ b/android-tv/app/src/main/java/com/mediacenter/tv/ui/screens/ImageViewerScreen.kt
+@@ -47,7 +47,7 @@ fun ImageViewerScreen(
+         )
+ 
+         Text(
+-            text = media.title ?: media.originalName,
++            text = media.displayTitle,
+             color = Color.White,
+             fontSize = 16.sp,
+             modifier = Modifier
+diff --git a/android-tv/app/src/main/java/com/mediacenter/tv/ui/screens/SettingsScreen.kt b/android-tv/app/src/main/java/com/mediacenter/tv/ui/screens/SettingsScreen.kt
+index b1bd914..65bf5ee 100644
+--- a/android-tv/app/src/main/java/com/mediacenter/tv/ui/screens/SettingsScreen.kt
++++ b/android-tv/app/src/main/java/com/mediacenter/tv/ui/screens/SettingsScreen.kt
+@@ -1,5 +1,6 @@
+ package com.mediacenter.tv.ui.screens
+ 
++import android.widget.Toast
+ import androidx.compose.foundation.background
+ import androidx.compose.foundation.border
+ import androidx.compose.foundation.focusable
+@@ -14,8 +15,10 @@ import androidx.compose.ui.Alignment
+ import androidx.compose.ui.Modifier
+ import androidx.compose.ui.focus.onFocusChanged
+ import androidx.compose.ui.graphics.Color
++import androidx.compose.ui.platform.LocalContext
+ import androidx.compose.ui.text.TextStyle
+ import androidx.compose.ui.text.font.FontWeight
++import androidx.compose.ui.text.input.PasswordVisualTransformation
+ import androidx.compose.ui.unit.dp
+ import androidx.compose.ui.unit.sp
+ import com.mediacenter.tv.ui.viewmodel.MainViewModel
+@@ -25,40 +28,51 @@ fun SettingsScreen(
+     viewModel: MainViewModel,
+     onBack: () -> Unit
+ ) {
++    val context = LocalContext.current
+     val currentUrl by viewModel.serverUrl.collectAsState()
++    val isLoggedIn by viewModel.isLoggedIn.collectAsState()
++
+     var inputUrl by remember(currentUrl) { mutableStateOf(currentUrl) }
+-    var isFieldFocused by remember { mutableStateOf(false) }
++    var username by remember { mutableStateOf("") }
++    var password by remember { mutableStateOf("") }
++
++    var isUrlFocused by remember { mutableStateOf(false) }
++    var isUserFocused by remember { mutableStateOf(false) }
++    var isPassFocused by remember { mutableStateOf(false) }
+ 
+     Column(
+         modifier = Modifier
+             .fillMaxSize()
+             .background(Color(0xFF11111B))
+-            .padding(40.dp),
++            .padding(32.dp),
+         horizontalAlignment = Alignment.CenterHorizontally,
+         verticalArrangement = Arrangement.Center
+     ) {
+         Text(
+-            text = "⚙ 服务器地址设置",
++            text = "⚙ 设置与账户登录",
+             color = Color.White,
+-            fontSize = 22.sp,
++            fontSize = 24.sp,
+             fontWeight = FontWeight.Bold,
+             modifier = Modifier.padding(bottom = 24.dp)
+         )
+ 
++        // 服务端地址输入
+         Text(
+-            text = "请填写 MediaCenter 后端服务地址（如 http://192.168.1.100:3000）",
++            text = "后端服务地址（例: http://192.168.1.100:3000）",
+             color = Color(0xFFA6ADC8),
+             fontSize = 14.sp,
+-            modifier = Modifier.padding(bottom = 16.dp)
++            modifier = Modifier
++                .align(Alignment.Start)
++                .width(480.dp)
++                .padding(bottom = 6.dp)
+         )
+-
+         Box(
+             modifier = Modifier
+                 .width(480.dp)
+                 .background(Color(0xFF1E1E2E), RoundedCornerShape(8.dp))
+                 .border(
+-                    width = if (isFieldFocused) 2.dp else 1.dp,
+-                    color = if (isFieldFocused) Color(0xFF6466F1) else Color(0xFF313244),
++                    width = if (isUrlFocused) 2.dp else 1.dp,
++                    color = if (isUrlFocused) Color(0xFF6466F1) else Color(0xFF313244),
+                     shape = RoundedCornerShape(8.dp)
+                 )
+                 .padding(horizontal = 16.dp, vertical = 12.dp)
+@@ -70,29 +84,134 @@ fun SettingsScreen(
+                 singleLine = true,
+                 modifier = Modifier
+                     .fillMaxWidth()
+-                    .onFocusChanged { isFieldFocused = it.isFocused }
++                    .onFocusChanged { isUrlFocused = it.isFocused }
+                     .focusable()
+             )
+         }
+ 
+-        Spacer(modifier = Modifier.height(32.dp))
++        Spacer(modifier = Modifier.height(20.dp))
++
++        if (isLoggedIn) {
++            Text(
++                text = "✅ 当前已登录账户",
++                color = Color(0xFFA6E3A1),
++                fontSize = 16.sp,
++                fontWeight = FontWeight.Bold,
++                modifier = Modifier.padding(bottom = 12.dp)
++            )
+ 
+-        Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+             Button(
+                 onClick = {
+-                    viewModel.updateServerUrl(inputUrl)
+-                    onBack()
++                    viewModel.logout()
++                    Toast.makeText(context, "已退出登录", Toast.LENGTH_SHORT).show()
++                },
++                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFF38BA8))
++            ) {
++                Text("退出当前账户", color = Color.White)
++            }
++        } else {
++            // 用户名
++            Text(
++                text = "用户名",
++                color = Color(0xFFA6ADC8),
++                fontSize = 14.sp,
++                modifier = Modifier
++                    .align(Alignment.Start)
++                    .width(480.dp)
++                    .padding(bottom = 6.dp)
++            )
++            Box(
++                modifier = Modifier
++                    .width(480.dp)
++                    .background(Color(0xFF1E1E2E), RoundedCornerShape(8.dp))
++                    .border(
++                        width = if (isUserFocused) 2.dp else 1.dp,
++                        color = if (isUserFocused) Color(0xFF6466F1) else Color(0xFF313244),
++                        shape = RoundedCornerShape(8.dp)
++                    )
++                    .padding(horizontal = 16.dp, vertical = 12.dp)
++            ) {
++                BasicTextField(
++                    value = username,
++                    onValueChange = { username = it },
++                    textStyle = TextStyle(color = Color.White, fontSize = 16.sp),
++                    singleLine = true,
++                    modifier = Modifier
++                        .fillMaxWidth()
++                        .onFocusChanged { isUserFocused = it.isFocused }
++                        .focusable()
++                )
++            }
++
++            Spacer(modifier = Modifier.height(12.dp))
++
++            // 密码
++            Text(
++                text = "密码",
++                color = Color(0xFFA6ADC8),
++                fontSize = 14.sp,
++                modifier = Modifier
++                    .align(Alignment.Start)
++                    .width(480.dp)
++                    .padding(bottom = 6.dp)
++            )
++            Box(
++                modifier = Modifier
++                    .width(480.dp)
++                    .background(Color(0xFF1E1E2E), RoundedCornerShape(8.dp))
++                    .border(
++                        width = if (isPassFocused) 2.dp else 1.dp,
++                        color = if (isPassFocused) Color(0xFF6466F1) else Color(0xFF313244),
++                        shape = RoundedCornerShape(8.dp)
++                    )
++                    .padding(horizontal = 16.dp, vertical = 12.dp)
++            ) {
++                BasicTextField(
++                    value = password,
++                    onValueChange = { password = it },
++                    textStyle = TextStyle(color = Color.White, fontSize = 16.sp),
++                    singleLine = true,
++                    visualTransformation = PasswordVisualTransformation(),
++                    modifier = Modifier
++                        .fillMaxWidth()
++                        .onFocusChanged { isPassFocused = it.isFocused }
++                        .focusable()
++                )
++            }
++
++            Spacer(modifier = Modifier.height(16.dp))
++
++            Button(
++                onClick = {
++                    if (username.isBlank() || password.isBlank()) {
++                        Toast.makeText(context, "请输入用户名和密码", Toast.LENGTH_SHORT).show()
++                        return@Button
++                    }
++                    viewModel.login(username, password) { success, error ->
++                        if (success) {
++                            Toast.makeText(context, "登录成功！", Toast.LENGTH_SHORT).show()
++                        } else {
++                            Toast.makeText(context, error ?: "登录失败", Toast.LENGTH_LONG).show()
++                        }
++                    }
+                 },
+                 colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF6466F1))
+             ) {
+-                Text("保存并返回", color = Color.White)
++                Text("登录账户", color = Color.White)
+             }
++        }
+ 
++        Spacer(modifier = Modifier.height(28.dp))
++
++        Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+             Button(
+-                onClick = onBack,
++                onClick = {
++                    viewModel.updateServerUrl(inputUrl)
++                    onBack()
++                },
+                 colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF313244))
+             ) {
+-                Text("取消", color = Color.White)
++                Text("保存设置并返回", color = Color.White)
+             }
+         }
+     }
+diff --git a/android-tv/app/src/main/java/com/mediacenter/tv/ui/screens/VideoPlayerScreen.kt b/android-tv/app/src/main/java/com/mediacenter/tv/ui/screens/VideoPlayerScreen.kt
+index 7ce6269..6e5e2ba 100644
+--- a/android-tv/app/src/main/java/com/mediacenter/tv/ui/screens/VideoPlayerScreen.kt
++++ b/android-tv/app/src/main/java/com/mediacenter/tv/ui/screens/VideoPlayerScreen.kt
+@@ -70,7 +70,7 @@ fun VideoPlayerScreen(
+ 
+         // 视频标题浮层
+         Text(
+-            text = media.title ?: media.originalName,
++            text = media.displayTitle,
+             color = Color.White,
+             fontSize = 18.sp,
+             modifier = Modifier
+diff --git a/android-tv/app/src/main/java/com/mediacenter/tv/ui/viewmodel/MainViewModel.kt b/android-tv/app/src/main/java/com/mediacenter/tv/ui/viewmodel/MainViewModel.kt
+index 84b44b5..a031b0d 100644
+--- a/android-tv/app/src/main/java/com/mediacenter/tv/ui/viewmodel/MainViewModel.kt
++++ b/android-tv/app/src/main/java/com/mediacenter/tv/ui/viewmodel/MainViewModel.kt
+@@ -26,12 +26,41 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
+     private val _serverUrl = MutableStateFlow(ApiClient.getServerUrl(getApplication()))
+     val serverUrl: StateFlow<String> = _serverUrl
+ 
++    private val _isLoggedIn = MutableStateFlow(!ApiClient.getToken(getApplication()).isNullOrEmpty())
++    val isLoggedIn: StateFlow<Boolean> = _isLoggedIn
++
+     private var currentPage = 1
+ 
+     init {
+         loadMedia()
+     }
+ 
++    fun login(username: String, password: String, onResult: (Boolean, String?) -> Unit) {
++        viewModelScope.launch {
++            try {
++                val api = ApiClient.getApi(getApplication())
++                val response = api.login(com.mediacenter.tv.data.model.LoginRequest(username, password))
++                if (response.isSuccessful && response.body() != null) {
++                    val token = response.body()!!.token
++                    ApiClient.saveToken(getApplication(), token)
++                    _isLoggedIn.value = true
++                    loadMedia()
++                    onResult(true, null)
++                } else {
++                    onResult(false, "登录失败: ${response.code()} ${response.message()}")
++                }
++            } catch (e: Exception) {
++                onResult(false, "网络错误: ${e.localizedMessage}")
++            }
++        }
++    }
++
++    fun logout() {
++        ApiClient.saveToken(getApplication(), null)
++        _isLoggedIn.value = false
++        loadMedia()
++    }
++
+     fun setFilterType(type: String?) {
+         if (_selectedType.value != type) {
+             _selectedType.value = type
+@@ -67,8 +96,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
+                     val data = response.body()!!
+                     _uiState.value = MediaUiState.Success(
+                         items = data.items,
+-                        totalPages = data.totalPages,
+-                        currentPage = data.page
++                        totalPages = data.pagination?.totalPages ?: 1,
++                        currentPage = data.pagination?.page ?: 1
+                     )
+                 } else {
+                     _uiState.value = MediaUiState.Error("加载失败: ${response.code()} ${response.message()}")
+diff --git a/fix_null_and_login_ui.patch b/fix_null_and_login_ui.patch
+new file mode 100644
+index 0000000..d11d38c
+--- /dev/null
++++ b/fix_null_and_login_ui.patch
+@@ -0,0 +1,27 @@
++From c33b1ebd360189299095354fd92f4d8df7619e94 Mon Sep 17 00:00:00 2001
++From: Antigravity <antigravity@example.com>
++Date: Wed, 2 Sep 2026 16:27:58 +0000
++Subject: [PATCH] refactor(android-tv): use wildcard import for compose runtime
++ in ImageViewerScreen
++
++---
++ .../java/com/mediacenter/tv/ui/screens/ImageViewerScreen.kt    | 3 +--
++ 1 file changed, 1 insertion(+), 2 deletions(-)
++
++diff --git a/android-tv/app/src/main/java/com/mediacenter/tv/ui/screens/ImageViewerScreen.kt b/android-tv/app/src/main/java/com/mediacenter/tv/ui/screens/ImageViewerScreen.kt
++index 0ad1014..57f90be 100644
++--- a/android-tv/app/src/main/java/com/mediacenter/tv/ui/screens/ImageViewerScreen.kt
+++++ b/android-tv/app/src/main/java/com/mediacenter/tv/ui/screens/ImageViewerScreen.kt
++@@ -5,8 +5,7 @@ import androidx.compose.foundation.clickable
++ import androidx.compose.foundation.focusable
++ import androidx.compose.foundation.layout.*
++ import androidx.compose.material3.Text
++-import androidx.compose.runtime.Composable
++-import androidx.compose.runtime.remember
+++import androidx.compose.runtime.*
++ import androidx.compose.ui.Alignment
++ import androidx.compose.ui.Modifier
++ import androidx.compose.ui.graphics.Color
++-- 
++2.53.0.windows.1
++
+diff --git a/graphflow-out/graphflow-graph.json b/graphflow-out/graphflow-graph.json
+new file mode 100644
+index 0000000..390afa4
+--- /dev/null
++++ b/graphflow-out/graphflow-graph.json
+@@ -0,0 +1,209 @@
++{
++  "nodes": [
++    {
++      "id": "dialogue-session:bu4imu",
++      "type": "Decision",
++      "content": "dialogue-session session-b92c749d-d187-4b37-895c-06133157b582 turns=9 tip=dialogue:bu4imu:0009",
++      "metadata": {
++        "kind": "dialogue-session",
++        "record": "{\"id\":\"dialogue-session:bu4imu\",\"name\":\"session-b92c749d-d187-4b37-895c-06133157b582\",\"tipTurnId\":\"dialogue:bu4imu:0009\",\"turnCount\":9,\"topicTokens\":[\"168\",\"192\",\"20\",\"282\",\"3023\",\"alias\",\"api\",\"app\",\"appdata\",\"author\",\"cache\",\"com\",\"dawn\",\"downloads\",\"duration\",\"filehash\",\"get\",\"github\",\"https\",\"id\",\"iwara\",\"iwaradownloadtool\",\"iwaraenhance\",\"lc\",\"limit\",\"media\",\"mediacenter\",\"mediacenter这个是我的\",\"mnt\",\"mp4\",\"mp4这个吗\",\"network\",\"post\",\"put\",\"rw\",\"sourcemeta\",\"src\",\"tags\",\"title\",\"token实际可以用\",\"ts\",\"uploads\",\"uploadtime\",\"wlgh01\",\"上面再跑一遍\",\"但是提交不了作者下的作品\",\"作者\",\"创建记录\"],\"createdAt\":1787681299396,\"updatedAt\":1787682957074}",
++        "name": "session-b92c749d-d187-4b37-895c-06133157b582"
++      }
++    },
++    {
++      "id": "dialogue:bu4imu:0001",
++      "type": "Decision",
++      "content": "dialogue-turn #1 Q: 看下https://github.com/WLGH01/MediaCenter https://github.com/dawn-lc/MediaCenter 这两个api一样吗 | A: # 结论：基本一致，但 WLGH01 是**超集**（新增了功能） 两个仓库是**上下游关系**：`WLGH01/MediaCenter` 是 `dawn-lc/MediaCenter` 的自用修改版（README 明确声明），我 clone 两边做了逐文件 diff。 ## 相同的部分（约 30 个文件完全一致） …",
++      "metadata": {
++        "kind": "dialogue-turn",
++        "record": "{\"id\":\"dialogue:bu4imu:0001\",\"sessionId\":\"dialogue-session:bu4imu\",\"seq\":1,\"userQuery\":\"看下https://github.com/WLGH01/MediaCenter https://github.com/dawn-lc/MediaCenter 这两个api一样吗\",\"assistantReply\":\"# 结论：基本一致，但 WLGH01 是**超集**（新增了功能） 两个仓库是**上下游关系**：`WLGH01/MediaCenter` 是 `dawn-lc/MediaCenter` 的自用修改版（README 明确声明），我 clone 两边做了逐文件 diff。 ## 相同的部分（约 30 个文件完全一致） 所有**基础 API 完全一致**（`/api` 前缀，全部端点兼容）： - `/api/auth`：登录、注册、用户资料 - `/api/media`：列表、统计、详情、上传、编辑、删除、恢复、`/:id/stream-token` - `/api/stream`：流媒体（Range、签名 URL） - `/api/tags`、`/api/authors`、`/api/users` - `/api/admin`：用户管理、目录扫描、reset-db - `/api/events`：SSE 实时推送 ## WLGH01 新增的 API（dawn 没有） | 新增接口 | 功能 | |---|---| | `GET/POST /api/collections`、`PUT/DELETE /api/collections/:id` | 收藏夹 CRUD（新功能） | | `GET/POST /api/collections/:id/media`、`DELETE /api/collections/:id/media/:mediaId` | 收藏夹内媒体管理 | | `GET /api/media/:id/collections` | 查媒体在哪些收藏夹 | | `GET/POST /api/admin/api-tokens`、`DELETE /api/admin/api-tokens/:id` | 管理面板生成数据库 API 令牌 | | `GET /api/admin/media-by-path`、`POST /api/admin/batch-delete-media` | 按路径批量删除媒体 | 配套改动：数据库新增 3 张表（`api_tokens`、`collections`、`collection_media`），认证中间件支持\\\"JWT > 环境变量 API_TOKEN > 数据库令牌\\\"三级。 ## 非接口的行为差异 - **CORS**：dawn 是 `cors()` 全开放；WLGH01 默认**同源**，跨域需显式配置 `CORS_ORIGIN` - **请求体限制**：WLGH01 新增 `JSON_BODY_LIMIT`（默认 1mb）限流请求体 - **CSP**：WLGH01 关闭了 `upgradeInsecureRequests`（允许 HTTP 环境运行） - 新增 `TRUST_PROXY`、`CORS_ORIGIN` 环境变量 **一句话**：如果你只调用 dawn 的现有接口，在 WLGH01 上完全可用；反之 WLGH01 的收藏夹、令牌管理、批量删除接口在 dawn 上不存在。另外 WLGH01 默认 CORS 同源，跨域调用方需要注意。\",\"jumped\":false,\"relatedNodeIds\":[],\"createdAt\":1787681299396,\"updatedAt\":1787681379158,\"title\":\"看下https://github.com/WLGH01/M…\",\"summary\":\"# 结论：基本一致，但 WLGH01 是**超集**（新增了功能） 两个仓库是**上下游关系**：`WLGH01/MediaCenter` 是 `dawn-lc/MediaCenter` 的自用修改版（README 明确声明），我 clone 两边做了逐文件 diff\"}",
++        "seq": 1,
++        "sessionId": "dialogue-session:bu4imu",
++        "jumped": false
++      }
++    },
++    {
++      "id": "dialogue:bu4imu:0002",
++      "type": "Decision",
++      "content": "dialogue-turn #2 Q: https://github.com/IwaraEnhance/IwaraDownloadTool 那为什么这个里面的无法api传到我的项目里面 https://github.com/WLGH01/MediaCenter这个是我的 | A: # 结论：它没有\"API\"能传给你——它调用的 API 不属于它 先说最重要的事实：**IwaraDownloadTool 是一个油猴脚本（Tampermonkey userscript），不是后端服务，它自己没有任何可调用的 API**。它里面那些\"接口\"是 **iwara.tv 网站的私有 API**（`api.…",
++      "metadata": {
++        "kind": "dialogue-turn",
++        "record": "{\"id\":\"dialogue:bu4imu:0002\",\"sessionId\":\"dialogue-session:bu4imu\",\"seq\":2,\"userQuery\":\"https://github.com/IwaraEnhance/IwaraDownloadTool 那为什么这个里面的无法api传到我的项目里面 https://github.com/WLGH01/MediaCenter这个是我的\",\"assistantReply\":\"# 结论：它没有\\\"API\\\"能传给你——它调用的 API 不属于它 先说最重要的事实：**IwaraDownloadTool 是一个油猴脚本（Tampermonkey userscript），不是后端服务，它自己没有任何可调用的 API**。它里面那些\\\"接口\\\"是 **iwara.tv 网站的私有 API**（`api.iwara.tv` 之类），脚本只是运行在你的浏览器里、伪装成 iwara 页面去调它。 ## 为什么\\\"传不到\\\"你的项目 你的 MediaCenter（WLGH01）是 **Node.js 后端**，而 iwara 这些接口依赖三样东西，你的后端全都没有： | 依赖 | 脚本里怎么拿 | 你的后端为什么不行 | |---|---|---| | **浏览器登录态** | `unsafeWindow.document.cookie` + `localStorage` 里的 JWT（refresh_token/access_token） | 后端没有浏览器、没有用户登录 iwara 的凭据 | | **反爬签名** | `X-Version`（`getXVersion()` 动态计算）+ `X-Site` + `Referer` | 签名算法和 iwara 的 Cloudflare 防护都是针对浏览器的，服务端直连会被 403/拦 | | **运行环境** | `window.location.origin`、GM_xmlhttpRequest（跨域不受限） | Node 环境没有 window，跨域直接调 iwara 是裸请求，会被反爬识别 | ## 关键：这脚本反而内置了\\\"接入你的 MediaCenter\\\"的功能 源码里有 `src/network/mediaCenter.ts`（282 行），作者 **dawn-lc 正是你上游 MediaCenter 的作者**，所以它专门做了向 MediaCenter 推元数据的集成：油猴脚本配置里填 `MediaCenter API` 和 `MediaCenter API 密钥`，它会： 1. `GET /api/media?limit=0` 拉你 MediaCenter 的视频列表 2. 按 fileHash / title 匹配 iwara 视频 3. `POST /api/media` 创建记录 → `PUT /api/media/:id` 更新元数据（title、tags、author、duration、sourceMeta 等） ## 如果你配置了但同步失败，查这几点 1. **认证 401**：脚本用 `Authorization: Bearer <你填的密钥>` 调你的 API。你的 MediaCenter 只有三种凭证能过：环境变量 `API_TOKEN`、管理面板生成的数据库 API 令牌、或登录 JWT。**必须在 `.env` 里设 `API_TOKEN`（或在管理面板生成令牌）并填进脚本**，否则 `auth.tokenInvalid` 401。 2. **地址**：脚本默认 `http://127.0.0.1:3000`，要改成你 MediaCenter 实际可达地址。 3. **权限**：`POST/PUT /api/media` 需要 `requireAuth`，脚本用的 API 令牌映射到 admin 角色，能过。 ## 一句话总结 - 想把 iwara 的私有 API 搬进你的后端：**做不到**，它依赖浏览器登录态 + 反爬签名，是 iwara 的反爬设计决定的，不是代码问题。 - 想用脚本把 iwara 视频元数据**同步进你的 MediaCenter**：**这是官方内置功能**，配置好 API 地址 + API_TOKEN 即可，不需要也不应该移植任何代码。\",\"parentTurnId\":\"dialogue:bu4imu:0001\",\"jumped\":false,\"relatedNodeIds\":[],\"createdAt\":1787681524591,\"updatedAt\":1787681660065,\"title\":\"https://github.com/IwaraEnhan…\",\"summary\":\"# 结论：它没有\\\"API\\\"能传给你——它调用的 API 不属于它 先说最重要的事实：**IwaraDownloadTool 是一个油猴脚本（Tampermonkey userscript），不是后端服务，它自己没有任何可调用的 API**\"}",
++        "seq": 2,
++        "sessionId": "dialogue-session:bu4imu",
++        "jumped": false
++      }
++    },
++    {
++      "id": "dialogue:bu4imu:0003",
++      "type": "Decision",
++      "content": "dialogue-turn #3 Q: 源码里有 src/network/mediaCenter.ts（282 行），作者 dawn-lc 正是你上游 MediaCenter 的作者，所以它专门做了向 MediaCenter 推元数据的集成：油猴脚本配置里填 MediaCenter API 和 MediaCenter API 密钥，它会： GET /api… | A: # 不是模板格式的问题，是\"路径指向的文件在你的服务器上不存在\" 我沿着脚本推送链路把你 MediaCenter 的代码全部查了一遍，结论很明确：**`%#ALIAS#%` 这类模板本身没问题**（脚本会正确渲染成 `作者名/标题[时间戳].mp4`），真正卡住的是下面这个硬校验： ## 失败点：`POST /api…",
++      "metadata": {
++        "kind": "dialogue-turn",
++        "record": "{\"id\":\"dialogue:bu4imu:0003\",\"sessionId\":\"dialogue-session:bu4imu\",\"seq\":3,\"userQuery\":\"源码里有 src/network/mediaCenter.ts（282 行），作者 dawn-lc 正是你上游 MediaCenter 的作者，所以它专门做了向 MediaCenter 推元数据的集成：油猴脚本配置里填 MediaCenter API 和 MediaCenter API 密钥，它会： GET /api/media?limit=0 拉你 MediaCenter 的视频列表 按 fileHash / title 匹配 iwara 视频 POST /api/media 创建记录 → PUT /api/media/:id 更新元数据（title、tags、author、duration、sourceMeta 等） 问题就是这里，token实际可以用，它可以提交作者，但是提交不了作者下的作品，提交失败，是因为我的下载地址是/downloads/iwara/%#ALIAS#%/%#TITLE#%[%#UploadTime#%].mp4这个吗\",\"assistantReply\":\"# 不是模板格式的问题，是\\\"路径指向的文件在你的服务器上不存在\\\" 我沿着脚本推送链路把你 MediaCenter 的代码全部查了一遍，结论很明确：**`%#ALIAS#%` 这类模板本身没问题**（脚本会正确渲染成 `作者名/标题[时间戳].mp4`），真正卡住的是下面这个硬校验： ## 失败点：`POST /api/media`（createMedia）里强制 ffprobe 探测文件 你的 `createMedia` → `createMediaRecord` 里有这一段（`mediaController.ts`）： ```ts const probe = await probeMediaFile(params.filePath, params.mimeType); if (!probe) { throw new Error('无法识别媒体类型'); // ← 文件不存在时必然走到这 } ``` `probeMediaFile` 调的是 **ffprobe**，而 ffprobe 是对**你服务器上的真实路径**执行的。脚本传过来的 `filePath` 是 `/downloads/iwara/%#ALIAS#%/%#TITLE#%[%#UploadTime#%].mp4`——**这个路径是脚本所在机器（你的浏览器/下载机）的路径，不是运行 MediaCenter 的那台服务器（Docker 容器内）的路径**。服务器上根本没有这个文件 → ffprobe 失败 → `createMedia` 直接 500，脚本日志里就是 `createMedia failed for xxx: 500`。 **所以跟模板语法无关，换成什么格式都一样失败——除非那个路径在 MediaCenter 的机器上真实存在。** ## 为什么\\\"作者能提交、作品不行\\\" 你说的\\\"能提交作者\\\"正好印证了链路：`PUT /api/media/:id`（updateMedia）里 author 是走**数据库**的——`resolveAuthorId` 查不到就自动建作者记录，**不涉及文件**，所以作者能建出来；而作品（media）在 `POST /api/media` 阶段就要 ffprobe 真实文件，文件不存在就整条失败。 ## 解决办法（三选一） **方案 A：把下载目录挂载进 MediaCenter 容器（推荐，最省事）** 1. Docker/Compose 里把下载目录映射进去，例如： ```yaml volumes: - /你的下载盘/downloads:/downloads ``` 2. 油猴脚本里把下载路径模板改成**容器内路径**： ``` /downloads/iwara/%#ALIAS#%/%#TITLE#%[%#UploadTime#%].mp4 ``` 这样脚本推的 `filePath` 在容器内 ffprobe 能探测到，createMedia 就成功了。 **方案 B：先下载、后同步** 文件下载完成并落到 MediaCenter 能访问的路径后再触发同步（脚本本来就是\\\"先创建记录、下载完成后 updateMedia 兜底修正\\\"的设计）。 **方案 C：改你 MediaCenter 的代码**（不推荐，破坏导入语义） 把 `createMediaRecord` 里的强制 probe 改成\\\"文件不存在时跳过 probe、允许占位记录\\\"。但这样导入的记录没有时长/编码信息，`streamController` 等依赖真实文件的逻辑也会受影响。 ## 怎么快速验证 在你的服务器上手动跑一次等价请求，看是不是 500： ```bash # 用一个不存在的路径直接测 curl -X POST http://你的地址/api/media \\\\ -H \\\"Authorization: Bearer $API_TOKEN\\\" \\\\ -H \\\"Content-Type: application/json\\\" \\\\ -d '{\\\"filePath\\\":\\\"/downloads/iwara/xxx/yyy.mp4\\\",\\\"fileHash\\\":\\\"iwara_test_1\\\"}' ``` 如果返回 `{\\\"error\\\":\\\"error.internal\\\"}`（500），就确认是 ffprobe 探测失败；然后把路径换成服务器上真实存在的文件（比如容器内 `/app/uploads/xxx.mp4`）再测，应该返回 201。 **一句话**：模板语法没错，错在 `filePath` 必须指向 **MediaCenter 服务器上真实存在的文件**——把下载目录挂进容器、模板改成容器内路径即可。\",\"parentTurnId\":\"dialogue:bu4imu:0002\",\"jumped\":false,\"relatedNodeIds\":[],\"createdAt\":1787681810871,\"updatedAt\":1787681926348,\"title\":\"源码里有 src/network/mediaCenter.…\",\"summary\":\"# 不是模板格式的问题，是\\\"路径指向的文件在你的服务器上不存在\\\" 我沿着脚本推送链路把你 MediaCenter 的代码全部查了一遍，结论很明确：**`%#ALIAS#%` 这类模板本身没问题**（脚本会正确渲染成 `作者名/标题[时间戳].mp4`），真正卡住的是下面这个硬校验： ## 失败点：`POST /api/media`（createMedia）里强制 ffprobe 探测文件 你的 …\"}",
++        "seq": 3,
++        "sessionId": "dialogue-session:bu4imu",
++        "jumped": false
++      }
++    },
++    {
++      "id": "dialogue:bu4imu:0004",
++      "type": "Decision",
++      "content": "dialogue-turn #4 Q: 我原先 就是挂载进去的把下载目录挂载进 MediaCenter 容器 就是不行 | A: 挂载了还不行，那问题就不在\"挂没挂\"，而在**你模板里的路径是否等于容器内的真实路径**。挂载 ≠ 路径对得上，三个条件必须同时满足： ## 1. 模板前缀必须是\"容器内挂载点\"，不是宿主机路径 你写的是 `/downloads/iwara/...`，但你的容器里 `/downloads` 到底存在吗？取决于你 co…",
++      "metadata": {
++        "kind": "dialogue-turn",
++        "record": "{\"id\":\"dialogue:bu4imu:0004\",\"sessionId\":\"dialogue-session:bu4imu\",\"seq\":4,\"userQuery\":\"我原先 就是挂载进去的把下载目录挂载进 MediaCenter 容器 就是不行\",\"assistantReply\":\"挂载了还不行，那问题就不在\\\"挂没挂\\\"，而在**你模板里的路径是否等于容器内的真实路径**。挂载 ≠ 路径对得上，三个条件必须同时满足： ## 1. 模板前缀必须是\\\"容器内挂载点\\\"，不是宿主机路径 你写的是 `/downloads/iwara/...`，但你的容器里 `/downloads` 到底存在吗？取决于你 compose 的挂载配置： ```yaml volumes: - /你的宿主机下载盘/downloads:/downloads # ← 容器内挂载点是 /downloads ``` **验证**（在你服务器上）： ```bash # 看容器内 /downloads 是否存在、是不是你要的目录 docker exec <mediacenter容器名> ls -la /downloads/iwara/ # 直接对渲染后的完整路径做 ffprobe，这一步能 100% 复现 createMedia 的探测逻辑 docker exec <mediacenter容器名> ffprobe -v error -show_entries format=duration \\\\ \\\"/downloads/iwara/作者名/视频标题[时间戳].mp4\\\" ``` - 如果 `ls` 报 No such file or directory → 模板前缀和挂载点对不上（比如你挂的是 `/app/uploads`，模板却写 `/downloads`） - 如果 `ls` 能看到、`ffprobe` 却报错 → 看第 2、3 点 ## 2. 文件必须已经完整下载，且 ffprobe 能解析 你的 MediaCenter `createMedia` 对文件**强制 ffprobe**（`probeMediaFile`），失败就抛\\\"无法识别媒体类型\\\"。mp4 的时长信息在文件尾部（moov atom），**下载中/刚下载完的文件 ffprobe 很可能失败**。而脚本注释里明确写着\\\"创建记录时文件可能仍在下载中\\\"——也就是说脚本作者（dawn-lc）的上游 MediaCenter 允许这种状态，**但你的 WLGH01 版本 `createMediaRecord` 里 probe 失败是直接 throw 的**，这就是兼容性差异。建议**等文件下载完再同步**（脚本本来就是\\\"下载完成后 updateMedia 兜底修正\\\"的设计）。 ## 3. 容器内用户要能读这个文件 你的镜像特意做了**非 root、只读根文件系统**（README 里写的），挂载目录如果权限是 root-only，容器内用户 ffprobe 打不开： ```bash docker exec <mediacenter容器名> ls -la /downloads/iwara/ | head # 看 owner 和权限 ``` 读不了就 chmod 或改挂载。 ## 最快的定位方法 把失败现场贴给我，三选一就行： 1. **MediaCenter 后端日志**：docker logs 里 `[Media] 导入本地文件失败: ...` 那行完整内容 2. **脚本报错**：油猴脚本 console 里 `createMedia failed for xxx: 500 ...` 的完整文本 3. **上面那条 ffprobe 命令的输出** 有这些就能直接定位是路径、权限还是文件未完成的问题——不用再猜。\",\"parentTurnId\":\"dialogue:bu4imu:0003\",\"jumped\":false,\"relatedNodeIds\":[],\"createdAt\":1787682119625,\"updatedAt\":1787682164570,\"title\":\"我原先 就是挂载进去的把下载目录挂载进 MediaCent…\",\"summary\":\"建议**等文件下载完再同步**（脚本本来就是\\\"下载完成后 updateMedia 兜底修正\\\"的设计）\"}",
++        "seq": 4,
++        "sessionId": "dialogue-session:bu4imu",
++        "jumped": false
++      }
++    },
++    {
++      "id": "dialogue:bu4imu:0005",
++      "type": "Decision",
++      "content": "dialogue-turn #5 Q: 话说有个媒体文件上传目录，容器内建议设为 /app/uploads 这个是这个原因导致的吗 | A: **对！就是这个原因，几乎可以确定。** 我看了你 compose 的挂载关系，链路完全对上了： ## 你的挂载 vs 你模板里的路径 ```yaml # docker-compose.yml（你的仓库原样） volumes: - ${MEDIA_DIR:-./uploads}:/app/uploads # 宿主机下…",
++      "metadata": {
++        "kind": "dialogue-turn",
++        "record": "{\"id\":\"dialogue:bu4imu:0005\",\"sessionId\":\"dialogue-session:bu4imu\",\"seq\":5,\"userQuery\":\"话说有个媒体文件上传目录，容器内建议设为 /app/uploads 这个是这个原因导致的吗\",\"assistantReply\":\"**对！就是这个原因，几乎可以确定。** 我看了你 compose 的挂载关系，链路完全对上了： ## 你的挂载 vs 你模板里的路径 ```yaml # docker-compose.yml（你的仓库原样） volumes: - ${MEDIA_DIR:-./uploads}:/app/uploads # 宿主机下载目录 → 容器内 /app/uploads ``` 也就是说：**你的下载目录在容器内只以 `/app/uploads` 存在**，容器内根本没有 `/downloads` 这个路径。 而脚本推给 MediaCenter 的 `filePath` 是**按你的下载路径模板渲染的**： ``` /downloads/iwara/%#ALIAS#%/%#TITLE#%[%#UploadTime#%].mp4 → filePath = /downloads/iwara/作者/标题[时间].mp4 ``` 于是你的 MediaCenter 在容器内执行 ffprobe `/downloads/iwara/...` → **容器内没有这个路径 → 探测失败 → createMedia 500**。作者是纯数据库操作（不涉及文件），所以能建成功；作品要 ffprobe 真实文件，所以必然失败。**和\\\"挂没挂载\\\"无关，是路径视角（宿主机 `/downloads` vs 容器内 `/app/uploads`）对不上。** ## 修复：模板改成容器内路径 ``` /app/uploads/iwara/%#ALIAS#%/%#TITLE#%[%#UploadTime#%].mp4 ``` ## 但有个坑必须注意 脚本里 `config.downloadPath` **同时**用于两处（我刚确认过源码）： 1. **Aria2 实际落盘目录**（`aria2.ts` 里 `dir: localPath.directory`） 2. **推送给 MediaCenter 的 filePath**（`aria2TrackManager.ts` 里 `filePath: downloadPath.fullPath`） 两者是同一个模板，所以改成 `/app/uploads/...` 后，Aria2 也会去写宿主机的 `/app/uploads/iwara/...`（宿主机大概率没有这目录）。 **最干净的方案：让宿主机路径 == 容器内路径 == `/app/uploads`**： ```bash # 宿主机上建目录（和容器内同名） sudo mkdir -p /app/uploads ``` ```yaml # compose 挂载改为同路径 bind（而不是 MEDIA_DIR 别名） volumes: - /app/uploads:/app/uploads ``` 然后脚本模板填 `/app/uploads/iwara/%#ALIAS#%/%#TITLE#%[%#UploadTime#%].mp4`： - Aria2 下载 → 宿主机 `/app/uploads/iwara/...` - MediaCenter 容器内看同一个 `/app/uploads/iwara/...` - ffprobe 能探测到 → createMedia 成功 ## 验证 ```bash # 容器内直接 ffprobe 你渲染后的完整路径（等价于 createMedia 的探测） docker exec <mediacenter容器名> ffprobe -v error -show_entries format=duration \\\\ \\\"/app/uploads/iwara/作者名/视频标题[时间戳].mp4\\\" ``` 返回时长数字 = 成功；报错 = 路径/文件问题，把报错贴给我。 一句话：**是的，容器内媒体目录是 `/app/uploads`，而你模板写的是 `/downloads`，容器内没有这个路径，所以 ffprobe 探测不到文件 → 提交失败。把模板改成 `/app/uploads/...` 并让宿主机下载目录与它同名即可。**\",\"parentTurnId\":\"dialogue:bu4imu:0004\",\"jumped\":false,\"relatedNodeIds\":[],\"createdAt\":1787682244111,\"updatedAt\":1787682307931,\"title\":\"话说有个媒体文件上传目录\",\"summary\":\"作者是纯数据库操作（不涉及文件），所以能建成功\"}",
++        "seq": 5,
++        "sessionId": "dialogue-session:bu4imu",
++        "jumped": false
++      }
++    },
++    {
++      "id": "dialogue:bu4imu:0006",
++      "type": "Decision",
++      "content": "dialogue-turn #6 Q: 我的问题是是不是因为作者默认这只了这个目录所以导致实际查找文件是，看作者脚本 /app/uploads//downloads/iwara/%#ALIAS#%/%#TITLE#%[%#UploadTime#%].mp4 | A: # 不是！两端代码都不会拼 `/app/uploads` 前缀 我把两端源码都翻遍了，**不存在\"uploadDir + filePath\"的拼接逻辑**，`/app/uploads//downloads/iwara/...` 这个路径永远不会被构造出来。 ## 证据（代码级） **脚本端**（IwaraDownlo…",
++      "metadata": {
++        "kind": "dialogue-turn",
++        "record": "{\"id\":\"dialogue:bu4imu:0006\",\"sessionId\":\"dialogue-session:bu4imu\",\"seq\":6,\"userQuery\":\"我的问题是是不是因为作者默认这只了这个目录所以导致实际查找文件是，看作者脚本 /app/uploads//downloads/iwara/%#ALIAS#%/%#TITLE#%[%#UploadTime#%].mp4\",\"assistantReply\":\"# 不是！两端代码都不会拼 `/app/uploads` 前缀 我把两端源码都翻遍了，**不存在\\\"uploadDir + filePath\\\"的拼接逻辑**，`/app/uploads//downloads/iwara/...` 这个路径永远不会被构造出来。 ## 证据（代码级） **脚本端**（IwaraDownloadTool `aria2TrackManager.ts`）： ```ts const downloadPath = getDownloadPath(videoInfo) // 渲染你的模板 const createBody = prune({ filePath: downloadPath.fullPath, // 原样传，不拼接任何前缀 fileHash: videoInfo.ID }) ``` `Path` 类的 `fullPath` 就是 `config.downloadPath` 模板渲染后的结果——**就是你配置的 `/downloads/iwara/...`，脚本不会加 `/app/uploads`**。 **你的 MediaCenter 端**（`mediaController.ts` `createMedia`）： ```ts const filePath = req.body.filePath; // 客户端传什么就是什么 ... const id = await createMediaRecord(req, { filePath, ... }); ``` `createMediaRecord` 里直接 `filePath: params.filePath` 入库、`probeMediaFile(params.filePath)` 拿去 ffprobe——**全链路原样透传**。 整个仓库里 `join(config.uploadDir, ...)` 只出现在两处，且都不涉及导入路径： - `storage.ts` 的 `getStoragePath()`——**没有任何地方调用它** - `thumbnail.ts` 的缩略图子目录（`join(uploadDir, '.thumbnails')`），与媒体文件无关 `UPLOAD_DIR`（/app/uploads）**只决定网页上传文件存哪、缩略图存哪，完全不参与 `POST /api/media` 导入时对 filePath 的查找**。 ## 所以实际发生的是 ffprobe 拿到的是**你模板渲染出的原样路径**： ``` /downloads/iwara/作者名/标题[时间戳].mp4 ``` 你的 MediaCenter 在**容器内**执行 ffprobe 这个路径——而你的 compose 里只有 `${MEDIA_DIR}:/app/uploads` 这一个挂载，**容器内根本没有 `/downloads` 目录**，所以 ffprobe 必然失败 → 500。 ## 修复（关键在\\\"模板路径 = 容器内路径\\\"） 两条路任选，**改一处即可**： **方案 A：compose 挂载点改成 `/downloads`（最简单，模板不用动）** ```yaml volumes: - /宿主机下载根目录:/downloads # 容器内出现 /downloads ``` 这样容器内 ffprobe `/downloads/iwara/...` 就能命中真实文件。 **方案 B：模板改成容器内路径（compose 不用动）** 把脚本下载路径模板改为： ``` /app/uploads/iwara/%#ALIAS#%/%#TITLE#%[%#UploadTime#%].mp4 ``` 并保证宿主机下载目录（Aria2 的落盘目录）挂到 `/app/uploads`。 ## 验证 ```bash docker exec <容器名> ffprobe -v error -show_entries format=duration \\\\ \\\"/downloads/iwara/作者名/视频标题[时间戳].mp4\\\" ``` 能输出时长就通了；报错就把完整错误贴给我。\",\"parentTurnId\":\"dialogue:bu4imu:0005\",\"jumped\":false,\"relatedNodeIds\":[],\"createdAt\":1787682389615,\"updatedAt\":1787682457211,\"title\":\"我的问题是是不是因为作者默认这只了这个目录所以导致实际查找…\",\"summary\":\"## 所以实际发生的是 ffprobe 拿到的是**你模板渲染出的原样路径**： ``` /downloads/iwara/作者名/标题[时间戳].mp4 ``` 你的 MediaCenter 在**容器内**执行 ffprobe 这个路径——而你的 compose 里只有 `${MEDIA_DIR}:/app/uploads` 这一个挂载，**容器内根本没有 `/downloads` 目录**…\"}",
++        "seq": 6,
++        "sessionId": "dialogue-session:bu4imu",
++        "jumped": false
++      }
++    },
++    {
++      "id": "dialogue:bu4imu:0007",
++      "type": "Decision",
++      "content": "dialogue-turn #7 Q: 查一下为什么http://192.168.3.20:3023/我的现在缩略图没了，这个问题先不管 | A: 好的，缩略图问题先放一边。 那回到刚才的同步问题——之前定位到根因是**模板路径（`/downloads/iwara/...`）在容器内不存在**。两个方案你选一个，我帮你确认具体改法： 1. **改 compose 挂载点**：把下载目录挂到容器内 `/downloads`（模板不用动） 2. **改脚本模板**：…",
++      "metadata": {
++        "kind": "dialogue-turn",
++        "record": "{\"id\":\"dialogue:bu4imu:0007\",\"sessionId\":\"dialogue-session:bu4imu\",\"seq\":7,\"userQuery\":\"查一下为什么http://192.168.3.20:3023/我的现在缩略图没了，这个问题先不管\",\"assistantReply\":\"好的，缩略图问题先放一边。 那回到刚才的同步问题——之前定位到根因是**模板路径（`/downloads/iwara/...`）在容器内不存在**。两个方案你选一个，我帮你确认具体改法： 1. **改 compose 挂载点**：把下载目录挂到容器内 `/downloads`（模板不用动） 2. **改脚本模板**：改成 `/app/uploads/iwara/...`（compose 不用动） 你现在的部署情况是哪种？或者你先说下一步想做什么。\",\"parentTurnId\":\"dialogue:bu4imu:0006\",\"jumped\":false,\"relatedNodeIds\":[],\"createdAt\":1787682624209,\"updatedAt\":1787682632137,\"title\":\"查一下为什么http://192.168.3.20:302…\",\"summary\":\"好的，缩略图问题先放一边。 那回到刚才的同步问题——之前定位到根因是**模板路径（`/downloads/iwara/...`）在容器内不存在**。两个方案你选一个，我帮你确认具体改法： 1. **改 compose 挂载点**：把下载目录挂到容器内 `/downloads`（模板不用动） 2. **改脚本模板**：改成 `/app/uploads/iwara/...`（compose 不用动）…\"}",
++        "seq": 7,
++        "sessionId": "dialogue-session:bu4imu",
++        "jumped": false
++      }
++    },
++    {
++      "id": "dialogue:bu4imu:0008",
++      "type": "Decision",
++      "content": "dialogue-turn #8 Q: 缩略图问题先解决我的缩略图没了，排查下 | A: (pending)",
++      "metadata": {
++        "kind": "dialogue-turn",
++        "record": "{\"id\":\"dialogue:bu4imu:0008\",\"sessionId\":\"dialogue-session:bu4imu\",\"seq\":8,\"userQuery\":\"缩略图问题先解决我的缩略图没了，排查下\",\"assistantReply\":\"\",\"parentTurnId\":\"dialogue:bu4imu:0007\",\"jumped\":false,\"relatedNodeIds\":[],\"createdAt\":1787682666713,\"updatedAt\":1787682666713,\"title\":\"缩略图问题先解决我的缩略图没了\"}",
++        "seq": 8,
++        "sessionId": "dialogue-session:bu4imu",
++        "jumped": false
++      }
++    },
++    {
++      "id": "dialogue:bu4imu:0009",
++      "type": "Decision",
++      "content": "dialogue-turn #9 Q: 上面再跑一遍/mnt/cache/appdata/mediacenter/uploads/':'/app/uploads':'rw'，我先挂载到本地 | A: 哨兵已挂上，缩略图重建完成后会自动唤醒我收尾。 ## 当前状态小结 **根因**：`/app/uploads` 之前挂的是**匿名 Docker 卷**（`a59bb023...`），容器重建时匿名卷被丢弃，`.thumbnails/` 里 601 个 webp 全部丢失，但 DB 里的 `thumb_path` 还…",
++      "metadata": {
++        "kind": "dialogue-turn",
++        "record": "{\"id\":\"dialogue:bu4imu:0009\",\"sessionId\":\"dialogue-session:bu4imu\",\"seq\":9,\"userQuery\":\"上面再跑一遍/mnt/cache/appdata/mediacenter/uploads/':'/app/uploads':'rw'，我先挂载到本地\",\"assistantReply\":\"哨兵已挂上，缩略图重建完成后会自动唤醒我收尾。 ## 当前状态小结 **根因**：`/app/uploads` 之前挂的是**匿名 Docker 卷**（`a59bb023...`），容器重建时匿名卷被丢弃，`.thumbnails/` 里 601 个 webp 全部丢失，但 DB 里的 `thumb_path` 还指向旧路径 → 所有 `GET /api/stream/:id/thumb` 返回 404（前端有兜底逻辑，但服务端缩略图没了）。 **已做**： 1. 你把挂载改成了 bind 到宿主机 `/mnt/cache/appdata/mediacenter/uploads`（rw）✅ 这个持久化了，以后重建容器缩略图不会再丢 2. 重建脚本已在容器内运行，704 条视频逐个 ffmpeg 提帧生成 webp，**目前已完成 185 个**，进程正常 **等待中**：重建完成后我会验证缩略图 URL 恢复 200，并把 OK/FAIL/MISSING 统计给你。预计 15-30 分钟跑完。\",\"parentTurnId\":\"dialogue:bu4imu:0008\",\"jumped\":false,\"relatedNodeIds\":[],\"createdAt\":1787682869897,\"updatedAt\":1787682957074,\"title\":\"上面再跑一遍/mnt/cache/appdata/medi…\",\"summary\":\"**已做**： 1. 你把挂载改成了 bind 到宿主机 `/mnt/cache/appdata/mediacenter/uploads`（rw）✅ 这个持久化了，以后重建容器缩略图不会再丢 2. 重建脚本已在容器内运行，704 条视频逐个 ffmpeg 提帧生成 webp，**目前已完成 185 个**，进程正常 **等待中**：重建完成后我会验证缩略图 URL 恢复 200，并把 OK/FA…\"}",
++        "seq": 9,
++        "sessionId": "dialogue-session:bu4imu",
++        "jumped": false
++      }
++    }
++  ],
++  "edges": [
++    {
++      "from": "dialogue:bu4imu:0001",
++      "to": "dialogue-session:bu4imu",
++      "relation": "part_of"
++    },
++    {
++      "from": "dialogue:bu4imu:0002",
++      "to": "dialogue-session:bu4imu",
++      "relation": "part_of"
++    },
++    {
++      "from": "dialogue:bu4imu:0001",
++      "to": "dialogue:bu4imu:0002",
++      "relation": "next_section"
++    },
++    {
++      "from": "dialogue:bu4imu:0003",
++      "to": "dialogue-session:bu4imu",
++      "relation": "part_of"
++    },
++    {
++      "from": "dialogue:bu4imu:0002",
++      "to": "dialogue:bu4imu:0003",
++      "relation": "next_section"
++    },
++    {
++      "from": "dialogue:bu4imu:0004",
++      "to": "dialogue-session:bu4imu",
++      "relation": "part_of"
++    },
++    {
++      "from": "dialogue:bu4imu:0003",
++      "to": "dialogue:bu4imu:0004",
++      "relation": "next_section"
++    },
++    {
++      "from": "dialogue:bu4imu:0005",
++      "to": "dialogue-session:bu4imu",
++      "relation": "part_of"
++    },
++    {
++      "from": "dialogue:bu4imu:0004",
++      "to": "dialogue:bu4imu:0005",
++      "relation": "next_section"
++    },
++    {
++      "from": "dialogue:bu4imu:0006",
++      "to": "dialogue-session:bu4imu",
++      "relation": "part_of"
++    },
++    {
++      "from": "dialogue:bu4imu:0005",
++      "to": "dialogue:bu4imu:0006",
++      "relation": "next_section"
++    },
++    {
++      "from": "dialogue:bu4imu:0007",
++      "to": "dialogue-session:bu4imu",
++      "relation": "part_of"
++    },
++    {
++      "from": "dialogue:bu4imu:0006",
++      "to": "dialogue:bu4imu:0007",
++      "relation": "next_section"
++    },
++    {
++      "from": "dialogue:bu4imu:0008",
++      "to": "dialogue-session:bu4imu",
++      "relation": "part_of"
++    },
++    {
++      "from": "dialogue:bu4imu:0007",
++      "to": "dialogue:bu4imu:0008",
++      "relation": "next_section"
++    },
++    {
++      "from": "dialogue:bu4imu:0009",
++      "to": "dialogue-session:bu4imu",
++      "relation": "part_of"
++    },
++    {
++      "from": "dialogue:bu4imu:0008",
++      "to": "dialogue:bu4imu:0009",
++      "relation": "next_section"
++    }
++  ]
++}
+diff --git a/graphflow-out/graphflow-graph.sqlite b/graphflow-out/graphflow-graph.sqlite
+new file mode 100644
+index 0000000000000000000000000000000000000000..df0281005dcb99eddc4a64e180b070c304d75e5d
+GIT binary patch
+literal 163840
+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
+z{H+%0D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
+
+literal 0
+HcmV?d00001
+
+-- 
+2.53.0.windows.1
+

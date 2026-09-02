@@ -5,9 +5,11 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -34,17 +36,27 @@ fun HomeScreen(
     val uiState by viewModel.uiState.collectAsState()
     val selectedType by viewModel.selectedType.collectAsState()
 
+    val authors by viewModel.authors.collectAsState()
+    val tags by viewModel.tags.collectAsState()
+    val collections by viewModel.collections.collectAsState()
+
+    val selectedAuthorId by viewModel.selectedAuthorId.collectAsState()
+    val selectedTag by viewModel.selectedTag.collectAsState()
+    val selectedCollectionId by viewModel.selectedCollectionId.collectAsState()
+    val sortBy by viewModel.sortBy.collectAsState()
+    val sortOrder by viewModel.sortOrder.collectAsState()
+
     Column(
         modifier = Modifier
             .fillMaxSize()
             .background(Color(0xFF11111B))
-            .padding(horizontal = 32.dp, vertical = 24.dp)
+            .padding(horizontal = 32.dp, vertical = 20.dp)
     ) {
         // 顶部 Header 与 导航/分类过滤
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(bottom = 20.dp),
+                .padding(bottom = 12.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
@@ -55,35 +67,104 @@ fun HomeScreen(
                 fontWeight = FontWeight.Bold
             )
 
-            // 分类标签组 (全部 / 视频 / 音频 / 图片)
+            // 基础分类标签组 (全部 / 视频 / 音频 / 图片 / 设置)
             Row(
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
             ) {
                 FilterTab(
                     title = "全部",
-                    isSelected = selectedType == null,
-                    onClick = { viewModel.setFilterType(null) }
+                    isSelected = selectedType == null && selectedCollectionId == null,
+                    onClick = {
+                        viewModel.setFilterCollection(null)
+                        viewModel.setFilterType(null)
+                    }
                 )
                 FilterTab(
                     title = "视频",
-                    isSelected = selectedType == "video",
-                    onClick = { viewModel.setFilterType("video") }
+                    isSelected = selectedType == "video" && selectedCollectionId == null,
+                    onClick = {
+                        viewModel.setFilterCollection(null)
+                        viewModel.setFilterType("video")
+                    }
                 )
                 FilterTab(
                     title = "音频",
-                    isSelected = selectedType == "audio",
-                    onClick = { viewModel.setFilterType("audio") }
+                    isSelected = selectedType == "audio" && selectedCollectionId == null,
+                    onClick = {
+                        viewModel.setFilterCollection(null)
+                        viewModel.setFilterType("audio")
+                    }
                 )
                 FilterTab(
                     title = "图片",
-                    isSelected = selectedType == "image",
-                    onClick = { viewModel.setFilterType("image") }
+                    isSelected = selectedType == "image" && selectedCollectionId == null,
+                    onClick = {
+                        viewModel.setFilterCollection(null)
+                        viewModel.setFilterType("image")
+                    }
                 )
                 FilterTab(
                     title = "⚙ 设置",
                     isSelected = false,
                     onClick = onOpenSettings
                 )
+            }
+        }
+
+        // 次级长条横向选择器 (排序 / 收藏库 / 作者 / 标签)
+        LazyRow(
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(bottom = 16.dp)
+        ) {
+            // 排序按钮
+            item {
+                val sortText = when (sortBy) {
+                    "createdAt" -> if (sortOrder == "desc") "排序: 最新↓" else "排序: 最早↑"
+                    "title" -> if (sortOrder == "desc") "排序: 标题↓" else "排序: 标题↑"
+                    "fileSize" -> if (sortOrder == "desc") "排序: 大小↓" else "排序: 大小↑"
+                    else -> "排序"
+                }
+                FilterChip(
+                    title = sortText,
+                    isSelected = true,
+                    activeColor = Color(0xFF45475A),
+                    onClick = { viewModel.setSort(sortBy) }
+                )
+            }
+
+            // 收藏夹
+            if (collections.isNotEmpty()) {
+                items(collections, key = { "coll_${it.id}" }) { coll ->
+                    FilterChip(
+                        title = "⭐ ${coll.name}",
+                        isSelected = selectedCollectionId == coll.id,
+                        onClick = { viewModel.setFilterCollection(if (selectedCollectionId == coll.id) null else coll.id) }
+                    )
+                }
+            }
+
+            // 作者筛选
+            if (authors.isNotEmpty()) {
+                items(authors, key = { "auth_${it.id}" }) { author ->
+                    FilterChip(
+                        title = "👤 ${author.name}",
+                        isSelected = selectedAuthorId == author.id,
+                        onClick = { viewModel.setFilterAuthor(if (selectedAuthorId == author.id) null else author.id) }
+                    )
+                }
+            }
+
+            // 标签筛选
+            if (tags.isNotEmpty()) {
+                items(tags, key = { "tag_${it.id}" }) { tag ->
+                    FilterChip(
+                        title = "#${tag.name}",
+                        isSelected = selectedTag == tag.name,
+                        onClick = { viewModel.setFilterTag(if (selectedTag == tag.name) null else tag.name) }
+                    )
+                }
             }
         }
 
@@ -120,7 +201,7 @@ fun HomeScreen(
                         modifier = Modifier.fillMaxSize(),
                         contentAlignment = Alignment.Center
                     ) {
-                        Text(text = "暂无媒体文件", color = Color(0xFFA6ADC8), fontSize = 16.sp)
+                        Text(text = "暂无相关媒体文件", color = Color(0xFFA6ADC8), fontSize = 16.sp)
                     }
                 } else {
                     LazyVerticalGrid(
@@ -139,6 +220,47 @@ fun HomeScreen(
                 }
             }
         }
+    }
+}
+
+@Composable
+fun FilterChip(
+    title: String,
+    isSelected: Boolean,
+    activeColor: Color = Color(0xFF89B4FA),
+    onClick: () -> Unit
+) {
+    var isFocused by remember { mutableStateOf(false) }
+    val scale by androidx.compose.animation.core.animateFloatAsState(targetValue = if (isFocused) 1.08f else 1.0f, label = "scale")
+
+    Box(
+        modifier = Modifier
+            .scale(scale)
+            .background(
+                color = when {
+                    isSelected -> activeColor
+                    isFocused -> Color(0xFF313244)
+                    else -> Color(0xFF181825)
+                },
+                shape = RoundedCornerShape(20.dp)
+            )
+            .border(
+                width = if (isFocused && !isSelected) 2.dp else 0.dp,
+                color = if (isFocused) Color(0xFF89B4FA) else Color.Transparent,
+                shape = RoundedCornerShape(20.dp)
+            )
+            .onFocusChanged { isFocused = it.isFocused }
+            .focusable()
+            .clickable { onClick() }
+            .padding(horizontal = 14.dp, vertical = 6.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(
+            text = title,
+            color = if (isSelected) Color(0xFF11111B) else if (isFocused) Color.White else Color(0xFFBAC2DE),
+            fontSize = 13.sp,
+            fontWeight = if (isSelected || isFocused) FontWeight.Bold else FontWeight.Normal
+        )
     }
 }
 

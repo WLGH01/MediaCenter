@@ -72,5 +72,16 @@ data class MediaListResponse(
 
 data class StreamTokenResponse(
     val token: String,
-    val expiresAt: String
+    val expiresAt: String? = null
+)
+
+data class CollectionItem(
+    val id: String,
+    val name: String,
+    val description: String? = null,
+    val mediaCount: Int? = 0
+)
+
+data class MediaDetailResponse(
+    val media: MediaItem
 )

@@ -20,6 +20,7 @@ import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.PlayerView
 import com.mediacenter.tv.data.api.ApiClient
 import com.mediacenter.tv.data.model.MediaItem as MediaModel
+import kotlinx.coroutines.launch
 
 @OptIn(UnstableApi::class)
 @Composable
@@ -28,10 +29,25 @@ fun VideoPlayerScreen(
     onBack: () -> Unit
 ) {
     val context = LocalContext.current
-    var isPreparing by remember { mutableStateOf(true) }
+    var streamToken by remember { mutableStateOf<String?>(null) }
+    var isLoadingToken by remember { mutableStateOf(true) }
 
-    val streamUrl = remember(media.id) {
-        ApiClient.getStreamUrl(context, media.id)
+    LaunchedEffect(media.id) {
+        try {
+            val api = ApiClient.getApi(context)
+            val response = api.getStreamToken(media.id)
+            if (response.isSuccessful && response.body() != null) {
+                streamToken = response.body()!!.token
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        } finally {
+            isLoadingToken = false
+        }
+    }
+
+    val streamUrl = remember(media.id, streamToken) {
+        ApiClient.getStreamUrl(context, media.id, streamToken)
     }
 
     val exoPlayer = remember(streamUrl) {
@@ -43,7 +59,7 @@ fun VideoPlayerScreen(
         }
     }
 
-    DisposableEffect(Unit) {
+    DisposableEffect(streamUrl) {
         onDispose {
             exoPlayer.release()
         }
@@ -54,19 +70,28 @@ fun VideoPlayerScreen(
             .fillMaxSize()
             .background(Color.Black)
     ) {
-        AndroidView(
-            factory = { ctx ->
-                PlayerView(ctx).apply {
-                    player = exoPlayer
-                    useController = true
-                    controllerAutoShow = true
-                    setShowNextButton(false)
-                    setShowPreviousButton(false)
-                    requestFocus()
-                }
-            },
-            modifier = Modifier.fillMaxSize()
-        )
+        if (isLoadingToken) {
+            Box(
+                modifier = Modifier.fillMaxSize(),
+                contentAlignment = Alignment.Center
+            ) {
+                CircularProgressIndicator(color = Color(0xFF89B4FA))
+            }
+        } else {
+            AndroidView(
+                factory = { ctx ->
+                    PlayerView(ctx).apply {
+                        player = exoPlayer
+                        useController = true
+                        controllerAutoShow = true
+                        setShowNextButton(false)
+                        setShowPreviousButton(false)
+                        requestFocus()
+                    }
+                },
+                modifier = Modifier.fillMaxSize()
+            )
+        }
 
         // 视频标题浮层
         Text(
