@@ -61,7 +61,7 @@ fun CollectionDialog(
     }
 
     LaunchedEffect(Unit) {
-        focusRequester.requestFocus()
+        try { focusRequester.requestFocus() } catch (_: Exception) {}
     }
 
     Dialog(

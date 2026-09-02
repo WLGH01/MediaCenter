@@ -22,6 +22,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.mediacenter.tv.data.model.MediaItem
+import com.mediacenter.tv.ui.components.TagChip
+import com.mediacenter.tv.ui.components.AuthorChip
 import com.mediacenter.tv.ui.components.TvMediaCard
 import com.mediacenter.tv.ui.viewmodel.MainViewModel
 import com.mediacenter.tv.ui.viewmodel.MediaUiState
@@ -158,12 +160,12 @@ fun HomeScreen(
                 )
             }
 
-            // 已选标签快捷移除
+            // 已选标签快捷移除 —— 统一 TagChip
             items(selectedTags.sorted(), key = { "sel_tag_$it" }) { tagName ->
-                FilterChip(
-                    title = "✕ #$tagName",
-                    isSelected = false,
-                    activeColor = Color(0xFFF38BA8),
+                TagChip(
+                    name = tagName,
+                    selected = false,
+                    showRemove = true,
                     onClick = { viewModel.toggleTag(tagName) }
                 )
             }
@@ -178,13 +180,13 @@ fun HomeScreen(
                 )
             }
 
-            // 已选作者快捷移除
+            // 已选作者快捷移除 —— 统一 AuthorChip
             if (selectedAuthorName != null) {
                 item {
-                    FilterChip(
-                        title = "✕",
-                        isSelected = false,
-                        activeColor = Color(0xFFF38BA8),
+                    AuthorChip(
+                        name = selectedAuthorName,
+                        selected = false,
+                        showRemove = true,
                         onClick = { viewModel.setFilterAuthor(null) }
                     )
                 }

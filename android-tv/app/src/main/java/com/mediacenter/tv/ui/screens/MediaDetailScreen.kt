@@ -1,5 +1,6 @@
 package com.mediacenter.tv.ui.screens
 
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -30,6 +31,8 @@ import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.mediacenter.tv.data.api.ApiClient
 import com.mediacenter.tv.data.model.MediaItem
+import com.mediacenter.tv.ui.components.TagChip
+import com.mediacenter.tv.ui.components.AuthorChip
 import com.mediacenter.tv.ui.viewmodel.MainViewModel
 
 /**
@@ -37,6 +40,8 @@ import com.mediacenter.tv.ui.viewmodel.MainViewModel
  * - 封面背景 + 海报式布局
  * - 作品简介 / 标签 / 作者，标签与作者可聚焦并跳转首页筛选
  * - 播放 / 收藏 / 返回
+ *
+ * 视觉规范：所有标签/作者 chip 统一使用 MediaChips 组件，胶囊形配色一致。
  */
 @Composable
 fun MediaDetailScreen(
@@ -59,7 +64,6 @@ fun MediaDetailScreen(
             val res = api.getMediaDetail(media.id)
             if (res.isSuccessful && res.body()?.media != null) {
                 val d = res.body()!!.media
-                // 合并：列表已带签名 URL（较新），详情补充文案字段
                 detail = d.copy(
                     streamUrl = d.streamUrl ?: media.streamUrl,
                     thumbUrl = d.thumbUrl ?: media.thumbUrl
@@ -70,10 +74,12 @@ fun MediaDetailScreen(
         }
     }
 
-    LaunchedEffect(Unit) { playFocusRequester.requestFocus() }
+    LaunchedEffect(Unit) {
+        try { playFocusRequester.requestFocus() } catch (_: Exception) {}
+    }
 
     Box(modifier = Modifier.fillMaxSize().background(Color(0xFF0D0D15))) {
-        // 背景：封面大图 + 暗化渐变（低版本 TV 兼容，不用 blur）
+        // ===== 背景：封面大图 + 暗化渐变 =====
         val bgUrl = remember(detail.id, detail.thumbUrl) {
             ApiClient.getThumbnailUrl(context, detail.id, detail.thumbUrl)
         }
@@ -82,48 +88,42 @@ fun MediaDetailScreen(
                 model = bgUrl,
                 contentDescription = null,
                 contentScale = ContentScale.Crop,
-                alpha = 0.35f,
+                alpha = 0.30f,
                 modifier = Modifier.fillMaxSize()
             )
         }
-        // 双层渐变压暗，保证文字可读
+        // 双层渐变压暗
         Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(
-                    Brush.horizontalGradient(
-                        colors = listOf(
-                            Color(0xE60D0D15), Color(0xB30D0D15), Color(0x660D0D15)
-                        )
-                    )
+            modifier = Modifier.fillMaxSize().background(
+                Brush.horizontalGradient(
+                    colors = listOf(Color(0xF00D0D15), Color(0xB30D0D15), Color(0x660D0D15))
                 )
+            )
         )
         Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(
-                    Brush.verticalGradient(
-                        colors = listOf(Color(0x330D0D15), Color(0xE60D0D15))
-                    )
+            modifier = Modifier.fillMaxSize().background(
+                Brush.verticalGradient(
+                    colors = listOf(Color(0x330D0D15), Color(0xF00D0D15))
                 )
+            )
         )
 
-        // 前景内容
+        // ===== 前景内容 =====
         Row(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(horizontal = 56.dp, vertical = 36.dp),
-            horizontalArrangement = Arrangement.spacedBy(40.dp)
+                .padding(horizontal = 48.dp, vertical = 32.dp),
+            horizontalArrangement = Arrangement.spacedBy(36.dp)
         ) {
             // ===== 左侧海报 =====
             Column(verticalArrangement = Arrangement.Center) {
                 Box(
                     modifier = Modifier
-                        .width(330.dp)
-                        .height(206.dp)
-                        .clip(RoundedCornerShape(14.dp))
+                        .width(300.dp)
+                        .height(190.dp)
+                        .clip(RoundedCornerShape(16.dp))
                         .background(Color(0xFF181825))
-                        .border(1.dp, Color(0x33FFFFFF), RoundedCornerShape(14.dp))
+                        .border(1.dp, Color(0x33FFFFFF), RoundedCornerShape(16.dp))
                 ) {
                     AsyncImage(
                         model = bgUrl,
@@ -131,7 +131,7 @@ fun MediaDetailScreen(
                         contentScale = ContentScale.Crop,
                         modifier = Modifier.fillMaxSize()
                     )
-                    // 底部渐变 + 时长（先拷贝到局部变量，委托属性无法智能转换）
+                    // 底部渐变 + 时长（委托属性需局部变量）
                     val posterDuration = detail.duration
                     if (detail.mediaType != "image" && posterDuration != null) {
                         Box(
@@ -155,18 +155,10 @@ fun MediaDetailScreen(
                         }
                     }
                     // 类型角标
-                    Text(
-                        text = when (detail.mediaType) {
-                            "video" -> "视频"
-                            "audio" -> "音频"
-                            else -> "图片"
-                        },
-                        color = Color.White,
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.Bold,
+                    Box(
                         modifier = Modifier
                             .align(Alignment.TopEnd)
-                            .padding(10.dp)
+                            .padding(8.dp)
                             .background(
                                 when (detail.mediaType) {
                                     "video" -> Color(0xCCE53935)
@@ -176,7 +168,18 @@ fun MediaDetailScreen(
                                 RoundedCornerShape(6.dp)
                             )
                             .padding(horizontal = 8.dp, vertical = 3.dp)
-                    )
+                    ) {
+                        Text(
+                            text = when (detail.mediaType) {
+                                "video" -> "视频"
+                                "audio" -> "音频"
+                                else -> "图片"
+                            },
+                            color = Color.White,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
                 }
             }
 
@@ -186,22 +189,22 @@ fun MediaDetailScreen(
                     .weight(1f)
                     .fillMaxHeight()
                     .verticalScroll(rememberScrollState())
-                    .padding(top = 8.dp),
-                verticalArrangement = Arrangement.spacedBy(14.dp)
+                    .padding(top = 4.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 // 标题
                 Text(
                     text = detail.displayTitle,
                     color = Color.White,
-                    fontSize = 30.sp,
+                    fontSize = 28.sp,
                     fontWeight = FontWeight.Bold,
-                    lineHeight = 38.sp
+                    lineHeight = 36.sp
                 )
 
                 // 元信息行
                 val metaItems = buildList {
                     detail.createdAt?.take(10)?.let { add(it) }
-                    detail.fileSize?.let { add(formatFileSize(it)) }
+                    detail.fileSize?.takeIf { it > 0 }?.let { add(formatFileSize(it)) }
                     if (detail.width != null && detail.height != null) add("${detail.width}×${detail.height}")
                     detail.uploaderName?.let { add("上传者 $it") }
                 }
@@ -209,72 +212,92 @@ fun MediaDetailScreen(
                     Text(
                         text = metaItems.joinToString("  ·  "),
                         color = Color(0xFFA6ADC8),
-                        fontSize = 14.sp
+                        fontSize = 13.sp
                     )
                 }
 
-                // 作者（可跳转筛选）
-                detail.displayAuthorName?.let { authorName ->
-                    val authorId = detail.displayAuthorId
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text("作者", color = Color(0xFF6C7086), fontSize = 13.sp)
-                        Spacer(Modifier.width(10.dp))
+                // 作者（可跳转筛选）—— 统一 AuthorChip
+                val authorName = detail.displayAuthorName
+                val authorId = detail.displayAuthorId
+                if (authorName != null) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Text("作者", color = Color(0xFF6C7086), fontSize = 12.sp)
                         if (authorId != null) {
-                            DetailChip(text = "👤 $authorName") {
-                                onFilterByAuthor(authorId, authorName)
-                            }
+                            AuthorChip(
+                                name = authorName,
+                                onClick = { onFilterByAuthor(authorId, authorName) }
+                            )
                         } else {
-                            Text(authorName, color = Color(0xFFCDD6F4), fontSize = 15.sp)
+                            Text(authorName, color = Color(0xFFCDD6F4), fontSize = 14.sp)
                         }
                     }
                 }
 
-                // 标签（可跳转筛选）——委托属性无法智能转换，先拷贝到局部变量
+                // 标签（可跳转筛选）—— 统一 TagChip + FlowRow 自动换行
                 val mediaTags = detail.tags.orEmpty()
                 if (mediaTags.isNotEmpty()) {
-                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Text("标签", color = Color(0xFF6C7086), fontSize = 13.sp)
-                        Row(
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            mediaTags.forEach { tag ->
-                                DetailChip(text = "# ${tag.name}") {
-                                    onFilterByTag(tag.name)
-                                }
-                            }
+                    FlowRow(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(6.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text(
+                            "标签",
+                            color = Color(0xFF6C7086),
+                            fontSize = 12.sp,
+                            modifier = Modifier.padding(top = 4.dp)
+                        )
+                        mediaTags.forEach { tag ->
+                            TagChip(
+                                name = tag.name,
+                                onClick = { onFilterByTag(tag.name) }
+                            )
                         }
                     }
                 }
 
-                // 简介
+                // 简介（容器化）
                 val desc = detail.description?.trim()
                 if (!desc.isNullOrBlank()) {
-                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Text("简介", color = Color(0xFF6C7086), fontSize = 13.sp)
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(Color(0x1411111B))
+                            .border(1.dp, Color(0xFF1E1E2E), RoundedCornerShape(12.dp))
+                            .padding(14.dp),
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Text("简介", color = Color(0xFF6C7086), fontSize = 12.sp)
                         Text(
                             text = desc,
                             color = Color(0xFFBAC2DE),
                             fontSize = 14.sp,
                             lineHeight = 22.sp,
-                            maxLines = 6,
+                            maxLines = 8,
                             overflow = TextOverflow.Ellipsis
                         )
                     }
                 }
 
-                Spacer(Modifier.height(6.dp))
+                Spacer(Modifier.height(4.dp))
 
                 // 操作按钮
                 Row(
-                    horizontalArrangement = Arrangement.spacedBy(14.dp),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Button(
                         onClick = { onPlay(detail) },
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF89B4FA)),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = Color(0xFF89B4FA)
+                        ),
                         modifier = Modifier
                             .focusRequester(playFocusRequester)
-                            .height(52.dp)
+                            .height(48.dp)
                     ) {
                         Text(
                             text = if (detail.mediaType == "image") "查看图片" else "▶  播放",
@@ -290,18 +313,27 @@ fun MediaDetailScreen(
             }
         }
 
-        // 顶部返回提示
+        // 返回按钮（可聚焦）
+        var backFocused by remember { mutableStateOf(false) }
         Row(
             modifier = Modifier
                 .align(Alignment.TopStart)
-                .padding(20.dp),
+                .padding(16.dp)
+                .scale(if (backFocused) 1.05f else 1f)
+                .background(
+                    if (backFocused) Color(0x2689B4FA) else Color(0x1411111B),
+                    RoundedCornerShape(8.dp)
+                )
+                .onFocusChanged { backFocused = it.isFocused }
+                .focusable()
+                .clickable { onBack() }
+                .padding(horizontal = 14.dp, vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text("‹ 返回", color = Color(0xFFA6ADC8), fontSize = 14.sp)
         }
     }
 
-    // 收藏对话框复用（点击收藏按钮时打开）
     if (showCollection) {
         CollectionDialog(
             media = detail,
@@ -314,13 +346,14 @@ fun MediaDetailScreen(
 @Composable
 private fun OutlinedActionButton(text: String, onClick: () -> Unit) {
     var isFocused by remember { mutableStateOf(false) }
+    val scale by animateFloatAsState(if (isFocused) 1.05f else 1f, label = "btnScale")
     Text(
         text = text,
         color = if (isFocused) Color(0xFF89B4FA) else Color(0xFFBAC2DE),
         fontSize = 16.sp,
         fontWeight = FontWeight.Medium,
         modifier = Modifier
-            .scale(if (isFocused) 1.05f else 1f)
+            .scale(scale)
             .background(
                 if (isFocused) Color(0x2689B4FA) else Color(0x1411111B),
                 RoundedCornerShape(10.dp)
@@ -333,38 +366,8 @@ private fun OutlinedActionButton(text: String, onClick: () -> Unit) {
             .onFocusChanged { isFocused = it.isFocused }
             .focusable()
             .clickable { onClick() }
-            .padding(horizontal = 26.dp, vertical = 13.dp)
+            .padding(horizontal = 24.dp, vertical = 12.dp)
     )
-}
-
-/** 可聚焦的标签/作者 chip：点击跳转筛选 */
-@Composable
-private fun DetailChip(text: String, onClick: () -> Unit) {
-    var isFocused by remember { mutableStateOf(false) }
-    Box(
-        modifier = Modifier
-            .scale(if (isFocused) 1.06f else 1f)
-            .background(
-                if (isFocused) Color(0xFF89B4FA) else Color(0xFF181825),
-                RoundedCornerShape(50)
-            )
-            .border(
-                1.dp,
-                if (isFocused) Color(0xFF89B4FA) else Color(0xFF313244),
-                RoundedCornerShape(50)
-            )
-            .onFocusChanged { isFocused = it.isFocused }
-            .focusable()
-            .clickable { onClick() }
-            .padding(horizontal = 14.dp, vertical = 6.dp)
-    ) {
-        Text(
-            text = text,
-            color = if (isFocused) Color(0xFF11111B) else Color(0xFFCDD6F4),
-            fontSize = 13.sp,
-            fontWeight = if (isFocused) FontWeight.Bold else FontWeight.Normal
-        )
-    }
 }
 
 /** 秒 → mm:ss / h:mm:ss */

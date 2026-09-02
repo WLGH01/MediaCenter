@@ -2,8 +2,6 @@ package com.mediacenter.tv.ui.screens
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
@@ -20,16 +18,14 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
-import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
-import com.mediacenter.tv.data.model.Author
+import com.mediacenter.tv.ui.components.AuthorChip
 import com.mediacenter.tv.ui.viewmodel.MainViewModel
 
 /**
@@ -37,6 +33,7 @@ import com.mediacenter.tv.ui.viewmodel.MainViewModel
  * - 网格展示全部作者（按媒体数排序）并显示计数
  * - 支持按名称搜索（含别名匹配，客户端过滤）
  * - 单选：点击作者立即应用筛选并关闭
+ * - 作者样式统一使用 AuthorChip 组件
  */
 @Composable
 fun AuthorPickerDialog(
@@ -49,7 +46,9 @@ fun AuthorPickerDialog(
     var search by remember { mutableStateOf("") }
     val focusRequester = remember { FocusRequester() }
 
-    LaunchedEffect(Unit) { focusRequester.requestFocus() }
+    LaunchedEffect(Unit) {
+        try { focusRequester.requestFocus() } catch (_: Exception) {}
+    }
 
     val filtered = remember(authors, search) {
         val q = search.trim()
@@ -129,11 +128,11 @@ fun AuthorPickerDialog(
                     ) {
                         items(filtered, key = { it.id }) { author ->
                             val checked = selectedAuthorId == author.id
-                            AuthorToggleChip(
-                                author = author,
-                                checked = checked,
+                            AuthorChip(
+                                name = author.name,
+                                selected = checked,
+                                count = author.mediaCount ?: 0,
                                 onClick = {
-                                    // 单选：再次点击当前选中项则取消筛选
                                     viewModel.setFilterAuthor(
                                         if (checked) null else author.id
                                     )
@@ -167,61 +166,6 @@ fun AuthorPickerDialog(
                     }
                 }
             }
-        }
-    }
-}
-
-@Composable
-private fun AuthorToggleChip(
-    author: Author,
-    checked: Boolean,
-    onClick: () -> Unit
-) {
-    var isFocused by remember { mutableStateOf(false) }
-    Box(
-        modifier = Modifier
-            .background(
-                color = when {
-                    checked -> Color(0xFF89B4FA)
-                    isFocused -> Color(0xFF313244)
-                    else -> Color(0xFF181825)
-                },
-                shape = RoundedCornerShape(10.dp)
-            )
-            .border(
-                width = if (isFocused && !checked) 2.dp else 0.dp,
-                color = if (isFocused) Color(0xFF89B4FA) else Color.Transparent,
-                shape = RoundedCornerShape(10.dp)
-            )
-            .onFocusChanged { isFocused = it.isFocused }
-            .focusable()
-            .clickable { onClick() }
-            .padding(horizontal = 12.dp, vertical = 10.dp)
-    ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            if (checked) {
-                Text(
-                    text = "✓ ",
-                    color = Color(0xFF11111B),
-                    fontSize = 13.sp,
-                    fontWeight = FontWeight.Bold
-                )
-            }
-            Text(
-                text = "👤 ${author.name}",
-                color = if (checked) Color(0xFF11111B) else Color(0xFFCDD6F4),
-                fontSize = 13.sp,
-                fontWeight = if (checked || isFocused) FontWeight.Bold else FontWeight.Normal,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.weight(1f, fill = false)
-            )
-            Spacer(Modifier.width(6.dp))
-            Text(
-                text = "${author.mediaCount ?: 0}",
-                color = if (checked) Color(0xFF3A3F5C) else Color(0xFF6C7086),
-                fontSize = 11.sp
-            )
         }
     }
 }

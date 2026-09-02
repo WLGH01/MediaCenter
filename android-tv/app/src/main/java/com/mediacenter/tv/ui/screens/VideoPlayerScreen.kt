@@ -18,6 +18,8 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.key.*
@@ -39,13 +41,18 @@ import com.mediacenter.tv.data.api.ApiClient
 import com.mediacenter.tv.data.api.MediaCenterApi
 import com.mediacenter.tv.data.model.MediaItem as MediaModel
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeoutOrNull
 
 /**
  * 签名 URL 续签器：服务端签名 URL 默认 3 分钟过期。
  * ExoPlayer 每次打开新的 HTTP 连接（Range 请求 / seek / 断点续传）都会先经过
  * resolveDataSpec；此处检测 expires 参数，若临近过期则同步换取新的签名 URL，
  * 从而支持长时间不间断播放。
+ *
+ * 注：resolveDataSpec 在 ExoPlayer 的加载线程（非主线程）调用，runBlocking 安全；
+ * 加 10 秒超时防止网络异常时无限占用加载线程。
  */
 @OptIn(UnstableApi::class)
 private class StreamUrlRefresher(
@@ -63,11 +70,13 @@ private class StreamUrlRefresher(
 
         val refreshedUrl = runBlocking {
             try {
-                val res = api.getStreamToken(mediaId)
-                if (res.isSuccessful) {
-                    ApiClient.resolveUrl(context, res.body()?.streamUrl)
-                } else {
-                    null
+                withTimeoutOrNull(10_000L) {
+                    val res = api.getStreamToken(mediaId)
+                    if (res.isSuccessful) {
+                        ApiClient.resolveUrl(context, res.body()?.streamUrl)
+                    } else {
+                        null
+                    }
                 }
             } catch (e: Exception) {
                 null
@@ -143,6 +152,7 @@ fun VideoPlayerScreen(
         }
 
         // ===== 播放状态轮询（进度/缓冲/播放态） =====
+        // try-catch 防御：player 已 release 而轮询协程尚未取消的极小竞态窗口
         var positionMs by remember { mutableLongStateOf(0L) }
         var durationMs by remember { mutableLongStateOf(0L) }
         var bufferedMs by remember { mutableLongStateOf(0L) }
@@ -150,12 +160,17 @@ fun VideoPlayerScreen(
         var isBuffering by remember { mutableStateOf(false) }
 
         LaunchedEffect(exoPlayer) {
-            while (true) {
-                positionMs = exoPlayer.currentPosition
-                durationMs = exoPlayer.duration.takeIf { it > 0 } ?: 0L
-                bufferedMs = exoPlayer.bufferedPosition
-                isPlaying = exoPlayer.isPlaying
-                isBuffering = exoPlayer.playbackState == Player.STATE_BUFFERING
+            while (isActive) {
+                try {
+                    positionMs = exoPlayer.currentPosition
+                    durationMs = exoPlayer.duration.takeIf { it > 0 } ?: 0L
+                    bufferedMs = exoPlayer.bufferedPosition
+                    isPlaying = exoPlayer.isPlaying
+                    isBuffering = exoPlayer.playbackState == Player.STATE_BUFFERING
+                } catch (e: IllegalStateException) {
+                    // player 已释放，停止轮询
+                    break
+                }
                 delay(500)
             }
         }
@@ -169,6 +184,10 @@ fun VideoPlayerScreen(
                         PlaybackException.ERROR_CODE_IO_BAD_HTTP_STATUS ->
                             "播放被拒绝（鉴权失败或签名过期），请重试"
                         else -> "播放失败: ${error.localizedMessage ?: error.errorCodeName}"
+                    }
+                    try {
+                        exoPlayer.pause()
+                    } catch (_: Exception) {
                     }
                 }
             }
@@ -189,14 +208,20 @@ fun VideoPlayerScreen(
         }
 
         fun togglePlayPause() {
-            if (exoPlayer.isPlaying) exoPlayer.pause() else exoPlayer.play()
+            try {
+                if (exoPlayer.isPlaying) exoPlayer.pause() else exoPlayer.play()
+            } catch (_: Exception) {
+            }
         }
 
         fun seekBy(deltaMs: Long) {
-            val dur = exoPlayer.duration.takeIf { it > 0 } ?: return
-            val target = (exoPlayer.currentPosition + deltaMs).coerceIn(0L, dur)
-            exoPlayer.seekTo(target)
-            positionMs = target
+            try {
+                val dur = exoPlayer.duration.takeIf { it > 0 } ?: return
+                val target = (exoPlayer.currentPosition + deltaMs).coerceIn(0L, dur)
+                exoPlayer.seekTo(target)
+                positionMs = target
+            } catch (_: Exception) {
+            }
         }
 
         fun markInteraction() {
@@ -204,10 +229,21 @@ fun VideoPlayerScreen(
             interactionTick++
         }
 
+        // 播放页主动抢占焦点，确保遥控按键能到达自绘控制层
+        val screenFocusRequester = remember { FocusRequester() }
+        LaunchedEffect(exoPlayer) {
+            try {
+                screenFocusRequester.requestFocus()
+            } catch (_: IllegalStateException) {
+                // 焦点节点尚未就绪，忽略（用户仍可用方向键移入）
+            }
+        }
+
         Box(
             modifier = Modifier
                 .fillMaxSize()
                 .background(Color.Black)
+                .focusRequester(screenFocusRequester)
                 .focusable()
                 .onPreviewKeyEvent { keyEvent ->
                     if (keyEvent.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
@@ -232,9 +268,15 @@ fun VideoPlayerScreen(
             AndroidView(
                 factory = { ctx ->
                     PlayerView(ctx).apply {
-                        player = exoPlayer
                         useController = false // TV 遥控控制层由 Compose 自绘
                     }
+                },
+                update = { view ->
+                    // 重组时确保 PlayerView 始终绑定当前 player 实例
+                    if (view.player !== exoPlayer) view.player = exoPlayer
+                },
+                onRelease = { view ->
+                    view.player = null
                 },
                 modifier = Modifier.fillMaxSize()
             )
@@ -254,6 +296,13 @@ fun VideoPlayerScreen(
                         colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF313244))
                     ) {
                         Text("重试", color = Color.White)
+                    }
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Button(
+                        onClick = onBack,
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF181825))
+                    ) {
+                        Text("返回", color = Color(0xFFBAC2DE))
                     }
                 }
             }

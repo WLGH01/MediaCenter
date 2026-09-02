@@ -20,7 +20,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
-import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
@@ -28,7 +27,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
-import com.mediacenter.tv.data.model.Tag
+import com.mediacenter.tv.ui.components.TagChip
 import com.mediacenter.tv.ui.viewmodel.MainViewModel
 
 /**
@@ -36,6 +35,7 @@ import com.mediacenter.tv.ui.viewmodel.MainViewModel
  * - 网格展示全部标签（按媒体数排序）并显示计数
  * - 支持按名称搜索
  * - 多选标签后以 AND 表达式（A&B）联合筛选
+ * - 标签样式统一使用 TagChip 组件
  */
 @Composable
 fun TagPickerDialog(
@@ -49,7 +49,9 @@ fun TagPickerDialog(
     var pendingSelection by remember(selectedTags) { mutableStateOf(selectedTags) }
     val focusRequester = remember { FocusRequester() }
 
-    LaunchedEffect(Unit) { focusRequester.requestFocus() }
+    LaunchedEffect(Unit) {
+        try { focusRequester.requestFocus() } catch (_: Exception) {}
+    }
 
     val filtered = remember(tags, search) {
         val q = search.trim()
@@ -129,9 +131,10 @@ fun TagPickerDialog(
                     ) {
                         items(filtered, key = { it.id }) { tag ->
                             val checked = pendingSelection.contains(tag.name)
-                            TagToggleChip(
-                                tag = tag,
-                                checked = checked,
+                            TagChip(
+                                name = tag.name,
+                                selected = checked,
+                                count = tag.mediaCount ?: 0,
                                 onClick = {
                                     val next = pendingSelection.toMutableSet()
                                     if (!next.add(tag.name)) next.remove(tag.name)
@@ -168,58 +171,6 @@ fun TagPickerDialog(
                     }
                 }
             }
-        }
-    }
-}
-
-@Composable
-private fun TagToggleChip(
-    tag: Tag,
-    checked: Boolean,
-    onClick: () -> Unit
-) {
-    var isFocused by remember { mutableStateOf(false) }
-    Box(
-        modifier = Modifier
-            .background(
-                color = when {
-                    checked -> Color(0xFF89B4FA)
-                    isFocused -> Color(0xFF313244)
-                    else -> Color(0xFF181825)
-                },
-                shape = RoundedCornerShape(10.dp)
-            )
-            .border(
-                width = if (isFocused && !checked) 2.dp else 0.dp,
-                color = if (isFocused) Color(0xFF89B4FA) else Color.Transparent,
-                shape = RoundedCornerShape(10.dp)
-            )
-            .onFocusChanged { isFocused = it.isFocused }
-            .focusable()
-            .clickable { onClick() }
-            .padding(horizontal = 12.dp, vertical = 10.dp)
-    ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(
-                text = if (checked) "✓ " else "",
-                color = Color(0xFF11111B),
-                fontSize = 13.sp,
-                fontWeight = FontWeight.Bold
-            )
-            Text(
-                text = "#${tag.name}",
-                color = if (checked) Color(0xFF11111B) else Color(0xFFCDD6F4),
-                fontSize = 13.sp,
-                fontWeight = if (checked || isFocused) FontWeight.Bold else FontWeight.Normal,
-                maxLines = 1,
-                modifier = Modifier.weight(1f, fill = false)
-            )
-            Spacer(Modifier.width(6.dp))
-            Text(
-                text = "${tag.mediaCount ?: 0}",
-                color = if (checked) Color(0xFF3A3F5C) else Color(0xFF6C7086),
-                fontSize = 11.sp
-            )
         }
     }
 }

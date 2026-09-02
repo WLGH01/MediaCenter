@@ -140,7 +140,7 @@ fun TvMediaCard(
                 )
             }
 
-            // 标签预览 (左下，最多 2 个)
+            // 标签预览 (左下，最多 2 个) —— 统一 compact TagChip
             val previewTags = media.tags?.take(2)
             if (!previewTags.isNullOrEmpty()) {
                 Row(
@@ -150,15 +150,9 @@ fun TvMediaCard(
                     horizontalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
                     previewTags.forEach { tag ->
-                        Text(
-                            text = "#${tag.name}",
-                            color = Color(0xFFCDD6F4),
-                            fontSize = 10.sp,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier
-                                .background(Color(0x6689B4FA), RoundedCornerShape(4.dp))
-                                .padding(horizontal = 5.dp, vertical = 1.dp)
+                        TagChip(
+                            name = tag.name,
+                            compact = true
                         )
                     }
                 }
