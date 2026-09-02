@@ -207,8 +207,6 @@ fun VideoPlayerScreen(
                             "播放被拒绝（鉴权失败或签名过期），请重试"
                         PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED ->
                             "网络连接失败，请检查服务器是否在线"
-                        PlaybackException.ERROR_CODE_PARSING_UNSUPPORTED ->
-                            "不支持此媒体格式"
                         else -> "播放失败: ${error.localizedMessage ?: error.errorCodeName}"
                     }
                     try { exoPlayer.pause() } catch (_: Exception) {}
