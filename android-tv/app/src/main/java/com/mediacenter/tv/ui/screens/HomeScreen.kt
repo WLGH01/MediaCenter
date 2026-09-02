@@ -48,7 +48,13 @@ fun HomeScreen(
 
     // 对话框状态
     var showTagPicker by remember { mutableStateOf(false) }
+    var showAuthorPicker by remember { mutableStateOf(false) }
     var collectionTarget by remember { mutableStateOf<MediaItem?>(null) }
+
+    // 当前已选作者名（用于入口按钮显示）
+    val selectedAuthorName = remember(selectedAuthorId, authors) {
+        authors.find { it.id == selectedAuthorId }?.name
+    }
 
     Column(
         modifier = Modifier
@@ -162,6 +168,28 @@ fun HomeScreen(
                 )
             }
 
+            // 作者筛选入口（打开选择对话框，避免作者过多时横向滚动过长）
+            item {
+                FilterChip(
+                    title = if (selectedAuthorName != null) "👤 $selectedAuthorName"
+                    else "👤 作者筛选",
+                    isSelected = selectedAuthorId != null,
+                    onClick = { showAuthorPicker = true }
+                )
+            }
+
+            // 已选作者快捷移除
+            if (selectedAuthorName != null) {
+                item {
+                    FilterChip(
+                        title = "✕",
+                        isSelected = false,
+                        activeColor = Color(0xFFF38BA8),
+                        onClick = { viewModel.setFilterAuthor(null) }
+                    )
+                }
+            }
+
             // 收藏夹
             if (isLoggedIn && collections.isNotEmpty()) {
                 items(collections, key = { "coll_${it.id}" }) { coll ->
@@ -171,21 +199,6 @@ fun HomeScreen(
                         onClick = {
                             viewModel.setFilterCollection(
                                 if (selectedCollectionId == coll.id) null else coll.id
-                            )
-                        }
-                    )
-                }
-            }
-
-            // 作者筛选
-            if (authors.isNotEmpty()) {
-                items(authors, key = { "auth_${it.id}" }) { author ->
-                    FilterChip(
-                        title = "👤 ${author.name}",
-                        isSelected = selectedAuthorId == author.id,
-                        onClick = {
-                            viewModel.setFilterAuthor(
-                                if (selectedAuthorId == author.id) null else author.id
                             )
                         }
                     )
@@ -265,6 +278,14 @@ fun HomeScreen(
         TagPickerDialog(
             viewModel = viewModel,
             onDismiss = { showTagPicker = false }
+        )
+    }
+
+    // 作者选择对话框
+    if (showAuthorPicker) {
+        AuthorPickerDialog(
+            viewModel = viewModel,
+            onDismiss = { showAuthorPicker = false }
         )
     }
 

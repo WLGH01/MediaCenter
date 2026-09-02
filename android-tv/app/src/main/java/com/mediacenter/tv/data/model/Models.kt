@@ -63,7 +63,9 @@ data class MediaItem(
 data class Author(
     val id: String,
     val name: String,
-    val avatarUrl: String? = null
+    val avatarUrl: String? = null,
+    val altNames: List<String>? = emptyList(),
+    val mediaCount: Int? = 0
 )
 
 data class AuthorListResponse(

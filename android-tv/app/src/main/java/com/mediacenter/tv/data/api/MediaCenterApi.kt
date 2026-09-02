@@ -56,7 +56,11 @@ interface MediaCenterApi {
     ): Response<MediaCollectionsResponse>
 
     @GET("api/authors")
-    suspend fun getAuthors(): Response<AuthorListResponse>
+    suspend fun getAuthors(
+        @Query("limit") limit: Int = 100,
+        @Query("sortBy") sortBy: String = "mediaCount",
+        @Query("sortOrder") sortOrder: String = "desc"
+    ): Response<AuthorListResponse>
 
     @GET("api/tags")
     suspend fun getTags(
