@@ -19,7 +19,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -55,10 +54,13 @@ import com.mediacenter.tv.data.model.MediaItem as MediaModel
 import kotlinx.coroutines.delay
 
 /**
- * 专为 Android TV 遥控器打造的 VideoPlayerScreen：
- * 1. 原生监听遥控器 D-Pad（左右方向键按压快进/快退 10 秒、OK/Center/Enter 键切换播放/暂停）。
- * 2. 自定制的大屏控制 Overlay：按遥控器按键自动唤出精美的 4 秒全屏悬浮控制条（包含标题、播放状态图标、当前时间/总时长、缓冲条与进度游标）。
- * 3. 完美整合 AndroidX Media3 ExoPlayer 与 Compose/Lifecycle 释放保护。
+ * 深度优化版 VideoPlayerScreen（TV 原生遥控器全适配）：
+ * 1. 遥控器 D-Pad 原生拦截：
+ *    - 左右键：快进/快退 10 秒并自动唤出进度条 overlay。
+ *    - OK / Enter 键：播放/暂停无缝切换。
+ *    - 发生错误时自动放行焦点给错误提示框，确保“重试”与“返回”按钮可用遥控器自由切换选中。
+ * 2. 4 秒无人操作自动隐去 overlay 控制条。
+ * 3. 稳健的生命周期保护与网络断流自动续签重连机制。
  */
 @OptIn(UnstableApi::class)
 @Composable
@@ -111,12 +113,17 @@ fun VideoPlayerScreen(
             if (isLoading) {
                 CircularProgressIndicator(color = Color(0xFF89B4FA))
             } else if (loadError != null) {
+                val errorRetryFocusRequester = remember { FocusRequester() }
+                LaunchedEffect(Unit) {
+                    try { errorRetryFocusRequester.requestFocus() } catch (_: Exception) {}
+                }
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     Text(loadError!!, color = Color(0xFFF38BA8), fontSize = 16.sp)
                     Spacer(Modifier.height(16.dp))
                     Button(
                         onClick = { retryKey++ },
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF313244))
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF313244)),
+                        modifier = Modifier.focusRequester(errorRetryFocusRequester)
                     ) { Text("重试", color = Color.White) }
                     Spacer(Modifier.height(8.dp))
                     Button(
@@ -152,20 +159,21 @@ fun VideoPlayerScreen(
             }
     }
 
-    // 播放器状态（播放/暂停、位置、总长、缓冲）
+    // 播放器状态
     var isPlaying by remember { mutableStateOf(true) }
     var currentPositionMs by remember { mutableLongStateOf(0L) }
     var durationMs by remember { mutableLongStateOf(0L) }
     var bufferedPositionMs by remember { mutableLongStateOf(0L) }
+    var isEnded by remember { mutableStateOf(false) }
 
-    // 遥控器控制界面显示与自动隐藏计时
+    // 遥控器控制 Overlay 显示控制
     var controlsVisible by remember { mutableStateOf(true) }
     var hideTimerKey by remember { mutableIntStateOf(0) }
     val playerFocusRequester = remember { FocusRequester() }
 
     // 4 秒无遥控按键自动隐藏控制器
     LaunchedEffect(controlsVisible, hideTimerKey, isPlaying) {
-        if (controlsVisible && isPlaying) {
+        if (controlsVisible && isPlaying && !isEnded) {
             delay(4000)
             controlsVisible = false
         }
@@ -205,9 +213,18 @@ fun VideoPlayerScreen(
         }
     }
 
-    // 播放器错误监听及安全释放
+    // 播放器状态及错误监听
     DisposableEffect(exoPlayer) {
         val listener = object : Player.Listener {
+            override fun onPlaybackStateChanged(playbackState: Int) {
+                if (playbackState == Player.STATE_ENDED) {
+                    isEnded = true
+                    controlsVisible = true
+                } else if (playbackState == Player.STATE_READY) {
+                    isEnded = false
+                }
+            }
+
             override fun onPlayerError(error: PlaybackException) {
                 if (error.errorCode == PlaybackException.ERROR_CODE_IO_BAD_HTTP_STATUS ||
                     error.errorCode == PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED
@@ -230,9 +247,11 @@ fun VideoPlayerScreen(
         }
     }
 
-    // 进入页面时获取遥控器按键焦点
-    LaunchedEffect(Unit) {
-        try { playerFocusRequester.requestFocus() } catch (_: Exception) {}
+    // 页面加载及恢复时获取遥控器键盘焦点
+    LaunchedEffect(loadError, isLoading) {
+        if (loadError == null && !isLoading) {
+            try { playerFocusRequester.requestFocus() } catch (_: Exception) {}
+        }
     }
 
     Box(
@@ -242,12 +261,18 @@ fun VideoPlayerScreen(
             .focusRequester(playerFocusRequester)
             .focusable()
             .onKeyEvent { keyEvent ->
+                // 如果当前展示错误层，放行键盘事件给错误层按钮
+                if (loadError != null) return@onKeyEvent false
                 if (keyEvent.type != KeyEventType.KeyDown) return@onKeyEvent false
+                
                 showControls()
                 when (keyEvent.key) {
                     // OK / Enter 键切换播放/暂停
                     Key.DirectionCenter, Key.Enter, Key.MediaPlayPause -> {
-                        if (exoPlayer.isPlaying) {
+                        if (isEnded) {
+                            exoPlayer.seekTo(0)
+                            exoPlayer.play()
+                        } else if (exoPlayer.isPlaying) {
                             exoPlayer.pause()
                         } else {
                             exoPlayer.play()
@@ -281,7 +306,7 @@ fun VideoPlayerScreen(
         AndroidView(
             factory = { ctx ->
                 PlayerView(ctx).apply {
-                    useController = false // 使用 Compose 自制的专属于 TV 遥控的 UI 覆盖层
+                    useController = false
                     player = exoPlayer
                     setShowBuffering(PlayerView.SHOW_BUFFERING_WHEN_PLAYING)
                 }
@@ -294,7 +319,7 @@ fun VideoPlayerScreen(
             modifier = Modifier.fillMaxSize()
         )
 
-        // 自定义 TV 遥控控制 Overlay（顶部标题 + 底部进度与状态提示）
+        // 自定义 TV 遥控控制 Overlay
         AnimatedVisibility(
             visible = controlsVisible,
             enter = fadeIn(),
@@ -344,7 +369,6 @@ fun VideoPlayerScreen(
                             .height(16.dp),
                         contentAlignment = Alignment.CenterStart
                     ) {
-                        // 缓冲背景
                         LinearProgressIndicator(
                             progress = { bufferProgress.coerceIn(0f, 1f) },
                             modifier = Modifier
@@ -353,7 +377,6 @@ fun VideoPlayerScreen(
                             color = Color(0x66FFFFFF),
                             trackColor = Color(0x33FFFFFF)
                         )
-                        // 播放进度
                         LinearProgressIndicator(
                             progress = { progress.coerceIn(0f, 1f) },
                             modifier = Modifier
@@ -362,7 +385,6 @@ fun VideoPlayerScreen(
                             color = Color(0xFF89B4FA),
                             trackColor = Color.Transparent
                         )
-                        // 进度条上的圆点游标
                         Box(
                             modifier = Modifier
                                 .fillMaxWidth(progress.coerceIn(0.01f, 1f))
@@ -378,13 +400,17 @@ fun VideoPlayerScreen(
 
                     Spacer(Modifier.height(8.dp))
 
-                    // 底部控制行：状态 + 时间 + 遥控操作提示
+                    // 底部控制行
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text(
-                            text = if (isPlaying) "▶ 播放中" else "❚❚ 已暂停",
+                            text = when {
+                                isEnded -> "✓ 已播放完毕"
+                                isPlaying -> "▶ 播放中"
+                                else -> "❚❚ 已暂停"
+                            },
                             color = Color(0xFF89B4FA),
                             fontSize = 14.sp,
                             fontWeight = FontWeight.Bold
@@ -397,7 +423,7 @@ fun VideoPlayerScreen(
                         )
                         Spacer(Modifier.weight(1f))
                         Text(
-                            text = "◄/► 快进10s  ·  OK 暂停/播放  ·  返回 退出",
+                            text = "◄/► 快进10s  ·  OK ${if (isEnded) "重新播放" else "暂停/播放"}  ·  返回 退出",
                             color = Color(0xFFA6ADC8),
                             fontSize = 12.sp
                         )
@@ -408,6 +434,10 @@ fun VideoPlayerScreen(
 
         // 错误及重试覆盖层
         if (loadError != null && !isLoading) {
+            val popupRetryFocusRequester = remember { FocusRequester() }
+            LaunchedEffect(Unit) {
+                try { popupRetryFocusRequester.requestFocus() } catch (_: Exception) {}
+            }
             Box(
                 modifier = Modifier
                     .fillMaxSize()
@@ -422,13 +452,14 @@ fun VideoPlayerScreen(
                             loadError = null
                             retryKey++
                         },
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF313244))
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF313244)),
+                        modifier = Modifier.focusRequester(popupRetryFocusRequester)
                     ) { Text("重试", color = Color.White) }
                     Spacer(Modifier.height(8.dp))
                     Button(
                         onClick = onBack,
                         colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF181825))
-                    ) { Text("返回", color = Color(0xFFBAC2DE)) }
+                    ) { Text("返回", color = Color.White) }
                 }
             }
         }
