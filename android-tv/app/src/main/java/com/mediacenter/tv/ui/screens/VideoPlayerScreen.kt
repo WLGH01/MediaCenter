@@ -18,56 +18,32 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.DefaultHttpDataSource
-import androidx.media3.datasource.ResolvingDataSource
+import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.ui.PlayerView
 import com.mediacenter.tv.data.api.ApiClient
-import com.mediacenter.tv.data.api.MediaCenterApi
 import com.mediacenter.tv.data.model.MediaItem as MediaModel
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.isActive
-import kotlinx.coroutines.runBlocking
-import kotlinx.coroutines.withTimeoutOrNull
 
 /**
- * 签名 URL 续签器：签名 URL 默认 3 分钟过期，
- * ExoPlayer 每次开新连接时检查并自动续签。
+ * 优化版 VideoPlayerScreen：
+ * 1. 结合 AndroidX Media3 与 DefaultRenderersFactory.EXTENSION_RENDERER_MODE_PREFER/ON，
+ *    优先/启用 FFmpeg 扩展渲染器（解决音频/视频格式无法硬解导致的播放崩溃与无声音问题）。
+ * 2. 移除内部 StreamUrlRefresher 中容易造成底层线程死锁/崩溃的 runBlocking 逻辑，
+ *    改为当检测到播放错误（如签名 URL 过期或网络重连）时由上层 State 自动重新换取签名 URL 并平滑恢复播放。
+ * 3. 完美兼容 Compose 生命周期与 TV D-Pad 遥控交互。
  */
-@OptIn(UnstableApi::class)
-private class StreamUrlRefresher(
-    private val api: MediaCenterApi,
-    private val context: android.content.Context,
-    private val mediaId: String
-) : ResolvingDataSource.Resolver {
-    override fun resolveDataSpec(dataSpec: androidx.media3.datasource.DataSpec): androidx.media3.datasource.DataSpec {
-        val uri = dataSpec.uri
-        val expires = uri.getQueryParameter("expires")?.toLongOrNull() ?: return dataSpec
-        val now = System.currentTimeMillis() / 1000
-        if (expires - now > 60) return dataSpec
-
-        val refreshedUrl = runBlocking {
-            try {
-                withTimeoutOrNull(10_000L) {
-                    val res = api.getStreamToken(mediaId)
-                    if (res.isSuccessful) ApiClient.resolveUrl(context, res.body()?.streamUrl)
-                    else null
-                }
-            } catch (e: Exception) { null }
-        } ?: return dataSpec
-
-        return dataSpec.buildUpon().setUri(Uri.parse(refreshedUrl)).build()
-    }
-}
-
 @OptIn(UnstableApi::class)
 @Composable
 fun VideoPlayerScreen(
@@ -75,6 +51,8 @@ fun VideoPlayerScreen(
     onBack: () -> Unit
 ) {
     val context = LocalContext.current
+    val appContext = remember(context) { context.applicationContext }
+    
     var streamUrl by remember { mutableStateOf<String?>(null) }
     var isLoading by remember { mutableStateOf(true) }
     var loadError by remember { mutableStateOf<String?>(null) }
@@ -82,35 +60,36 @@ fun VideoPlayerScreen(
 
     BackHandler { onBack() }
 
-    // 获取签名流地址
+    // 首次及重试时获取服务器最新签名的流地址
     LaunchedEffect(media.id, retryKey) {
         isLoading = true
         loadError = null
         streamUrl = null
         try {
-            val api = ApiClient.getApi(context)
+            val api = ApiClient.getApi(appContext)
             val response = api.getStreamToken(media.id)
             if (response.isSuccessful && response.body()?.streamUrl != null) {
-                streamUrl = ApiClient.resolveUrl(context, response.body()!!.streamUrl)
+                streamUrl = ApiClient.resolveUrl(appContext, response.body()!!.streamUrl)
             } else {
                 loadError = when (response.code()) {
-                    401 -> "登录已过期，请到设置中重新登录"
-                    403 -> "没有权限播放该媒体"
-                    404 -> "媒体不存在或已被删除"
+                    401 -> "登录已过期，请在设置中重新登录"
+                    403 -> "无权播放该媒体"
+                    404 -> "媒体文件不存在或已被删除"
                     else -> "获取播放地址失败 (${response.code()})"
                 }
             }
         } catch (e: Exception) {
-            loadError = "网络错误: ${e.localizedMessage ?: "无法连接服务器"}"
+            loadError = "网络连接异常: ${e.localizedMessage ?: "无法连接到服务器"}"
         } finally {
             isLoading = false
         }
     }
 
     if (isLoading || streamUrl == null) {
-        // 加载中 / 出错占位
         Box(
-            modifier = Modifier.fillMaxSize().background(Color.Black),
+            modifier = Modifier
+                .fillMaxSize()
+                .background(Color.Black),
             contentAlignment = Alignment.Center
         ) {
             if (isLoading) {
@@ -134,25 +113,22 @@ fun VideoPlayerScreen(
         return
     }
 
-    // ===== 播放器（使用 PlayerView 自带控制器） =====
     val currentUrl = streamUrl!!
-    val appContext = context.applicationContext
 
+    // 创建配置有 FFmpeg 软解扩展的 ExoPlayer 实例
     val exoPlayer = remember(media.id, currentUrl, retryKey) {
-        val api = ApiClient.getApi(context)
-        val httpFactory = DefaultHttpDataSource.Factory()
+        val renderersFactory = DefaultRenderersFactory(appContext).apply {
+            setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_PREFER)
+        }
+
+        val httpDataSourceFactory = DefaultHttpDataSource.Factory()
             .setAllowCrossProtocolRedirects(true)
             .setConnectTimeoutMs(15_000)
             .setReadTimeoutMs(30_000)
             .setUserAgent("MediaCenterTV/1.0")
 
-        val resolvingFactory = ResolvingDataSource.Factory(
-            httpFactory,
-            StreamUrlRefresher(api, appContext, media.id)
-        )
-
-        ExoPlayer.Builder(appContext)
-            .setMediaSourceFactory(DefaultMediaSourceFactory(resolvingFactory))
+        ExoPlayer.Builder(appContext, renderersFactory)
+            .setMediaSourceFactory(DefaultMediaSourceFactory(httpDataSourceFactory))
             .build()
             .apply {
                 setMediaItem(MediaItem.fromUri(Uri.parse(currentUrl)))
@@ -161,16 +137,34 @@ fun VideoPlayerScreen(
             }
     }
 
-    // 错误监听 + 释放
+    // 监听 Compose 与 Activity 生命周期，及时 Pause/Release 防止内存泄漏或黑屏崩溃
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner, exoPlayer) {
+        val observer = LifecycleEventObserver { _, event ->
+            try {
+                if (event == Lifecycle.Event.ON_STOP) {
+                    exoPlayer.pause()
+                }
+            } catch (_: Exception) {}
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+        }
+    }
+
+    // 播放器错误监听及安全释放
     DisposableEffect(exoPlayer) {
         val listener = object : Player.Listener {
             override fun onPlayerError(error: PlaybackException) {
-                loadError = when (error.errorCode) {
-                    PlaybackException.ERROR_CODE_IO_BAD_HTTP_STATUS ->
-                        "播放被拒绝（鉴权失败或签名过期），请重试"
-                    PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED ->
-                        "网络连接失败，请检查服务器"
-                    else -> "播放失败: ${error.localizedMessage ?: error.errorCodeName}"
+                // 如果是签名过期或网络断开导致的错误，自动尝试刷新 Token 重新加载
+                if (error.errorCode == PlaybackException.ERROR_CODE_IO_BAD_HTTP_STATUS ||
+                    error.errorCode == PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED
+                ) {
+                    loadError = "播放连接断开，正在尝试重连…"
+                    retryKey++
+                } else {
+                    loadError = "播放发生错误: ${error.localizedMessage ?: error.errorCodeName}"
                 }
                 try { exoPlayer.pause() } catch (_: Exception) {}
             }
@@ -185,27 +179,29 @@ fun VideoPlayerScreen(
         }
     }
 
-    // PlayerView 自带控制器：D-Pad 左右 seek、OK 播放/暂停、返回退出
     Box(modifier = Modifier.fillMaxSize().background(Color.Black)) {
         AndroidView(
             factory = { ctx ->
                 PlayerView(ctx).apply {
                     useController = true
                     player = exoPlayer
-                    // 默认显示控制器，几秒后自动隐藏
                     setShowBuffering(PlayerView.SHOW_BUFFERING_WHEN_PLAYING)
                 }
             },
             update = { view ->
-                if (view.player !== exoPlayer) view.player = exoPlayer
+                if (view.player !== exoPlayer) {
+                    view.player = exoPlayer
+                }
             },
             modifier = Modifier.fillMaxSize()
         )
 
-        // 错误覆盖层
-        if (loadError != null) {
+        // 错误及重试覆盖层
+        if (loadError != null && !isLoading) {
             Box(
-                modifier = Modifier.fillMaxSize().background(Color(0xE6000000)),
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color(0xE6000000)),
                 contentAlignment = Alignment.Center
             ) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {

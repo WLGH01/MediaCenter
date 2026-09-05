@@ -65,10 +65,11 @@ dependencies {
     // Coil
     implementation(libs.coil.compose)
 
-    // ExoPlayer / Media3
+    // ExoPlayer / Media3 + FFmpeg Extension
     implementation(libs.androidx.media3.exoplayer)
     implementation(libs.androidx.media3.ui)
     implementation(libs.androidx.media3.common)
+    implementation(libs.androidx.media3.decoder.ffmpeg)
 
     // Coroutines
     implementation(libs.kotlinx.coroutines.android)
