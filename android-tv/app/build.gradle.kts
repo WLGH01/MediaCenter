@@ -70,11 +70,6 @@ dependencies {
     implementation(libs.androidx.media3.ui)
     implementation(libs.androidx.media3.common)
 
-    // DKVideoPlayer
-    implementation(libs.dkplayer.java)
-    implementation(libs.dkplayer.ui)
-    implementation(libs.dkplayer.exo)
-
     // Coroutines
     implementation(libs.kotlinx.coroutines.android)
 }
