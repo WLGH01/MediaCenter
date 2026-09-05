@@ -1,8 +1,6 @@
 package com.mediacenter.tv.ui.screens
 
-import android.net.Uri
 import androidx.activity.compose.BackHandler
-import androidx.annotation.OptIn
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -24,27 +22,18 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
-import androidx.media3.common.MediaItem
-import androidx.media3.common.PlaybackException
-import androidx.media3.common.Player
-import androidx.media3.common.util.UnstableApi
-import androidx.media3.datasource.DefaultHttpDataSource
-import androidx.media3.exoplayer.DefaultRenderersFactory
-import androidx.media3.exoplayer.ExoPlayer
-import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
-import androidx.media3.ui.PlayerView
 import com.mediacenter.tv.data.api.ApiClient
 import com.mediacenter.tv.data.model.MediaItem as MediaModel
+import xyz.doikki.videoplayer.player.VideoView
+import xyz.doikki.videoplayer.exo.ExoMediaPlayerFactory
+import xyz.doikki.videoplayer.ui.StandardVideoController
 
 /**
- * 优化版 VideoPlayerScreen：
- * 1. 结合 AndroidX Media3 与 DefaultRenderersFactory.EXTENSION_RENDERER_MODE_PREFER/ON，
- *    优先/启用 FFmpeg 扩展渲染器（解决音频/视频格式无法硬解导致的播放崩溃与无声音问题）。
- * 2. 移除内部 StreamUrlRefresher 中容易造成底层线程死锁/崩溃的 runBlocking 逻辑，
- *    改为当检测到播放错误（如签名 URL 过期或网络重连）时由上层 State 自动重新换取签名 URL 并平滑恢复播放。
- * 3. 完美兼容 Compose 生命周期与 TV D-Pad 遥控交互。
+ * 采用 DKVideoPlayer 重构的 VideoPlayerScreen：
+ * 1. 集成 DKVideoPlayer 框架 (ExoMediaPlayer 内核)，自带精美原生控制器与播放体验。
+ * 2. 完美适配遥控器方向键调节进度条、OK 键播放/暂停及后退逻辑。
+ * 3. 完美结合 Compose 与 Activity 生命周期管理。
  */
-@OptIn(UnstableApi::class)
 @Composable
 fun VideoPlayerScreen(
     media: MediaModel,
@@ -52,7 +41,7 @@ fun VideoPlayerScreen(
 ) {
     val context = LocalContext.current
     val appContext = remember(context) { context.applicationContext }
-    
+
     var streamUrl by remember { mutableStateOf<String?>(null) }
     var isLoading by remember { mutableStateOf(true) }
     var loadError by remember { mutableStateOf<String?>(null) }
@@ -60,7 +49,7 @@ fun VideoPlayerScreen(
 
     BackHandler { onBack() }
 
-    // 首次及重试时获取服务器最新签名的流地址
+    // 获取服务器签名的流地址
     LaunchedEffect(media.id, retryKey) {
         isLoading = true
         loadError = null
@@ -114,67 +103,26 @@ fun VideoPlayerScreen(
     }
 
     val currentUrl = streamUrl!!
+    var playerViewRef by remember { mutableStateOf<VideoView<*>?>(null) }
 
-    // 创建配置优化的 ExoPlayer 实例
-    val exoPlayer = remember(media.id, currentUrl, retryKey) {
-        val renderersFactory = DefaultRenderersFactory(appContext).apply {
-            setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_PREFER)
-        }
-
-        val httpDataSourceFactory = DefaultHttpDataSource.Factory()
-            .setAllowCrossProtocolRedirects(true)
-            .setConnectTimeoutMs(15_000)
-            .setReadTimeoutMs(30_000)
-            .setUserAgent("MediaCenterTV/1.0")
-
-        ExoPlayer.Builder(appContext, renderersFactory)
-            .setMediaSourceFactory(DefaultMediaSourceFactory(httpDataSourceFactory))
-            .build()
-            .apply {
-                setMediaItem(MediaItem.fromUri(Uri.parse(currentUrl)))
-                prepare()
-                playWhenReady = true
-            }
-    }
-
-    // 监听 Compose 与 Activity 生命周期，及时 Pause/Release 防止内存泄漏或黑屏崩溃
+    // 生命周期监听，确保在应用后台或返回时及时暂停释放
     val lifecycleOwner = LocalLifecycleOwner.current
-    DisposableEffect(lifecycleOwner, exoPlayer) {
+    DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
             try {
-                if (event == Lifecycle.Event.ON_STOP) {
-                    exoPlayer.pause()
+                when (event) {
+                    Lifecycle.Event.ON_PAUSE -> playerViewRef?.pause()
+                    Lifecycle.Event.ON_RESUME -> playerViewRef?.resume()
+                    Lifecycle.Event.ON_DESTROY -> playerViewRef?.release()
+                    else -> {}
                 }
             } catch (_: Exception) {}
         }
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose {
             lifecycleOwner.lifecycle.removeObserver(observer)
-        }
-    }
-
-    // 播放器错误监听及安全释放
-    DisposableEffect(exoPlayer) {
-        val listener = object : Player.Listener {
-            override fun onPlayerError(error: PlaybackException) {
-                // 如果是签名过期或网络断开导致的错误，自动尝试刷新 Token 重新加载
-                if (error.errorCode == PlaybackException.ERROR_CODE_IO_BAD_HTTP_STATUS ||
-                    error.errorCode == PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED
-                ) {
-                    loadError = "播放连接断开，正在尝试重连…"
-                    retryKey++
-                } else {
-                    loadError = "播放发生错误: ${error.localizedMessage ?: error.errorCodeName}"
-                }
-                try { exoPlayer.pause() } catch (_: Exception) {}
-            }
-        }
-        exoPlayer.addListener(listener)
-        onDispose {
             try {
-                exoPlayer.removeListener(listener)
-                exoPlayer.stop()
-                exoPlayer.release()
+                playerViewRef?.release()
             } catch (_: Exception) {}
         }
     }
@@ -182,21 +130,24 @@ fun VideoPlayerScreen(
     Box(modifier = Modifier.fillMaxSize().background(Color.Black)) {
         AndroidView(
             factory = { ctx ->
-                PlayerView(ctx).apply {
-                    useController = true
-                    player = exoPlayer
-                    setShowBuffering(PlayerView.SHOW_BUFFERING_WHEN_PLAYING)
+                VideoView<xyz.doikki.videoplayer.player.AbstractPlayer>(ctx).apply {
+                    setPlayerFactory(ExoMediaPlayerFactory.create())
+                    setUrl(currentUrl)
+                    val controller = StandardVideoController(ctx).apply {
+                        setTitle(media.title)
+                    }
+                    setVideoController(controller)
+                    start()
+                    playerViewRef = this
                 }
             },
             update = { view ->
-                if (view.player !== exoPlayer) {
-                    view.player = exoPlayer
-                }
+                playerViewRef = view
             },
             modifier = Modifier.fillMaxSize()
         )
 
-        // 错误及重试覆盖层
+        // 错误重试层
         if (loadError != null && !isLoading) {
             Box(
                 modifier = Modifier
