@@ -115,7 +115,7 @@ fun VideoPlayerScreen(
 
     val currentUrl = streamUrl!!
 
-    // 创建配置有 FFmpeg 软解扩展的 ExoPlayer 实例
+    // 创建配置优化的 ExoPlayer 实例
     val exoPlayer = remember(media.id, currentUrl, retryKey) {
         val renderersFactory = DefaultRenderersFactory(appContext).apply {
             setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_PREFER)
